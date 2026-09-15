@@ -890,3 +890,46 @@ export function formatSubagentTokenCount(totalTokens: number): string {
   }
   return `${(totalTokens / 1_000_000).toFixed(1)}M`;
 }
+
+/**
+ * Ids of every live (pending/running/waiting) agent in presentation order:
+ * direct agents first, then workflow members. Workflow coordinators are
+ * containers, not stoppable work — members are the stoppable unit.
+ */
+export function liveSubagentIds(model: AgentPanelModel): string[] {
+  const ids: string[] = [];
+  for (const agent of model.directAgents) {
+    if (isActiveSubagentStatus(agent.status)) ids.push(agent.id);
+  }
+  for (const group of model.workflows) {
+    if (isActiveSubagentStatus(group.workflow.status) && group.unphasedMembers.length === 0 && group.phases.length === 0) {
+      ids.push(group.workflow.id);
+    }
+    for (const phase of group.phases) {
+      for (const member of phase.members) {
+        if (isActiveSubagentStatus(member.status)) ids.push(member.id);
+      }
+    }
+    for (const member of group.unphasedMembers) {
+      if (isActiveSubagentStatus(member.status)) ids.push(member.id);
+    }
+  }
+  return ids;
+}
+
+/**
+ * The one agent a per-row Stop button may target, or null.
+ *
+ * Provider interrupts are session-scoped (every adapter closes the whole
+ * session), so a row-level stop is only honest when it cannot over-reach:
+ * exactly one live agent and no active turn. Otherwise stopping must go
+ * through the banner's stop-everything interrupt, which says what it does.
+ */
+export function singleStoppableSubagentId(
+  model: AgentPanelModel,
+  isTurnActive: boolean,
+): string | null {
+  if (isTurnActive) return null;
+  const live = liveSubagentIds(model);
+  return live.length === 1 && live[0] !== undefined ? live[0] : null;
+}

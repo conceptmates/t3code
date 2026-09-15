@@ -31,11 +31,19 @@ function dotClassFor(status: RuntimeSubagent["status"]): string {
 export const SubagentDetailView = memo(function SubagentDetailView({
   agent,
   onBack,
+  canStop = false,
+  stopping = false,
+  onStop,
 }: {
   agent: RuntimeSubagent;
   onBack: () => void;
+  canStop?: boolean | undefined;
+  stopping?: boolean | undefined;
+  onStop?: (() => void) | undefined;
 }) {
   const goal = agent.progress ?? agent.result ?? null;
+  const live =
+    agent.status === "pending" || agent.status === "running" || agent.status === "waiting";
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background">
       <div className="flex items-center gap-2 border-b border-border/60 px-3 py-2">
@@ -51,6 +59,19 @@ export const SubagentDetailView = memo(function SubagentDetailView({
           </span>
         ) : null}
         <span className="ml-auto shrink-0 text-xs text-muted-foreground">{statusLabelFor(agent.status)}</span>
+        {live && canStop && onStop ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="xs"
+            disabled={stopping}
+            onClick={() => onStop()}
+            aria-label={stopping ? `Stopping ${agent.title}` : `Stop ${agent.title}`}
+            title="Stop this agent"
+          >
+            {stopping ? "Stopping..." : "Stop"}
+          </Button>
+        ) : null}
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto p-3">
         <div className="mx-auto flex w-full max-w-2xl flex-col gap-3">
