@@ -1,5 +1,6 @@
 import { useScopedSettings, useUpdateScopedSettings } from "./useScopedSettings";
 import { ScopedSwitch } from "./ScopedSwitch";
+import { AndroidWirelessPairingSettings } from "./AndroidWirelessPairingSettings";
 import { DeviceHostsSettings } from "./DeviceHostsSettings";
 /**
  * Integrations settings - preferences for surfaces T3 Code embeds rather than
@@ -737,6 +738,10 @@ function DeviceIntegrationControls({
           {state.hostStatusDetail}
         </p>
       ) : null}
+      <AndroidWirelessPairingSettings
+        environmentId={environmentId}
+        disabled={projectScope || !enabled || busy}
+      />
       <DeviceHostsSettings environmentId={environmentId} />
     </>
   );

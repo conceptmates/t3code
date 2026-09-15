@@ -25,9 +25,11 @@ import {
   ensureSshEnvironment,
   fetchSshEnvironmentDescriptor,
   fetchSshSessionState,
+  getSshRemoteVersion,
   issueSshWebSocketTicket,
   resolveSshHost,
   resolveSshPasswordPrompt,
+  setSshRemoteVersion,
 } from "./methods/sshEnvironment.ts";
 import {
   checkForUpdate,
@@ -114,6 +116,8 @@ export const installDesktopIpcHandlers = Effect.fn("desktop.ipc.installHandlers"
   yield* ipc.handle(fetchSshSessionState);
   yield* ipc.handle(issueSshWebSocketTicket);
   yield* ipc.handle(resolveSshPasswordPrompt);
+  yield* ipc.handle(getSshRemoteVersion);
+  yield* ipc.handle(setSshRemoteVersion);
 
   yield* ipc.handle(getServerExposureState);
   yield* ipc.handle(setServerExposureMode);

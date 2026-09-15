@@ -4,6 +4,7 @@ import * as Effect from "effect/Effect";
 
 import { readDeviceDetail, runDeviceAction, supportsAction } from "./DeviceActions.ts";
 import type { DeviceHostReady } from "./DeviceHost.ts";
+import { DEVICE_HUB_SCRCPY_VERSION } from "./DeviceToolchain.ts";
 
 type Call = { command: string; args: ReadonlyArray<string>; stdin?: string };
 
@@ -12,6 +13,7 @@ const makeReady = (
   helpers: DeviceHostReady["helpers"] = {
     serveSimAxSettings: "/hub/simax/serve-sim-ax-settings",
     serveSimCli: "/hub/serve-sim.js",
+    scrcpyServer: "/hub/scrcpy-server",
   },
 ) => {
   const calls: Call[] = [];
@@ -156,7 +158,11 @@ describe("runDeviceAction", () => {
 
   it.effect("fails clearly when the helper is missing", () =>
     Effect.gen(function* () {
-      const { ready } = makeReady(() => ({}), { serveSimAxSettings: null, serveSimCli: null });
+      const { ready } = makeReady(() => ({}), {
+        serveSimAxSettings: null,
+        serveSimCli: null,
+        scrcpyServer: null,
+      });
       const error = yield* Effect.flip(
         runDeviceAction(ready, "ios", {
           type: "setColorFilter",
@@ -211,6 +217,56 @@ describe("runDeviceAction", () => {
       });
       expect(calls[0]?.args).toEqual(["simctl", "push", udid, "com.example.app", "-"]);
       expect(calls[0]?.stdin).toBe('{"aps":{"alert":"Hello"}}');
+    }),
+  );
+});
+
+describe("setScreenPower", () => {
+  const phone = "192.168.1.50:5555";
+
+  it.effect("runs the one-shot scrcpy helper with the hub's jar for a physical device", () =>
+    Effect.gen(function* () {
+      const { ready, calls } = makeReady();
+      yield* runDeviceAction(ready, "android", {
+        type: "setScreenPower",
+        deviceId: phone,
+        value: false,
+      });
+      expect(calls).toHaveLength(1);
+      expect(calls[0]!.command).toBe(process.execPath);
+      expect(calls[0]!.args[0]).toBe("-e");
+      expect(calls[0]!.args.slice(2)).toEqual([
+        phone,
+        "off",
+        "/hub/scrcpy-server",
+        DEVICE_HUB_SCRCPY_VERSION,
+      ]);
+    }),
+  );
+
+  it.effect("refuses emulators and hosts without the scrcpy server before running anything", () =>
+    Effect.gen(function* () {
+      const emulator = makeReady();
+      const onEmulator = yield* runDeviceAction(emulator.ready, "android", {
+        type: "setScreenPower",
+        deviceId: "emulator-5554",
+        value: false,
+      }).pipe(Effect.flip);
+      expect(onEmulator._tag).toBe("DeviceActionUnavailableError");
+      expect(emulator.calls).toEqual([]);
+
+      const bare = makeReady(() => ({}), {
+        serveSimAxSettings: null,
+        serveSimCli: null,
+        scrcpyServer: null,
+      });
+      const withoutJar = yield* runDeviceAction(bare.ready, "android", {
+        type: "setScreenPower",
+        deviceId: phone,
+        value: true,
+      }).pipe(Effect.flip);
+      expect(withoutJar._tag).toBe("DeviceActionUnavailableError");
+      expect(bare.calls).toEqual([]);
     }),
   );
 });

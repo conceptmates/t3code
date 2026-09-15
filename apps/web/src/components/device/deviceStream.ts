@@ -49,7 +49,14 @@ export interface DeviceStreamTarget {
   readonly access: DeviceHubAccess;
 }
 
-export type DeviceHardwareButton = "home" | "back" | "recents" | "power" | "appSwitcher";
+export type DeviceHardwareButton =
+  | "home"
+  | "back"
+  | "recents"
+  | "power"
+  | "appSwitcher"
+  | "volumeUp"
+  | "volumeDown";
 
 const RETRY_DELAY_MS = 1_000;
 const FRAME_DURATION_US = 16_667;
@@ -111,12 +118,17 @@ export function parseSemuPacket(raw: ArrayBuffer): {
   return { data: bytes, isKey: null, timestamp: null };
 }
 
-const isVideoSessionMessage = (text: string) => {
+/** The `WxH` of a serve-emu `video-session` message, or null for any other text. */
+const videoSessionSize = (text: string): string | null => {
   try {
-    const message = JSON.parse(text) as { type?: unknown };
-    return message.type === "video-session";
+    const message = JSON.parse(text) as {
+      type?: unknown;
+      size?: { width?: unknown; height?: unknown };
+    };
+    if (message.type !== "video-session") return null;
+    return `${String(message.size?.width)}x${String(message.size?.height)}`;
   } catch {
-    return false;
+    return null;
   }
 };
 
@@ -204,6 +216,8 @@ export interface DeviceStreamClient {
   /** Normalized 0..1 coordinates in the displayed frame. */
   readonly sendTouch: (phase: "begin" | "move" | "end", x: number, y: number) => void;
   readonly sendKey: (event: KeyboardEvent, phase: "down" | "up") => void;
+  /** Types text into the focused field. Android only; serve-sim takes HID keys. */
+  readonly sendText: (text: string) => void;
   readonly pressButton: (button: DeviceHardwareButton) => void;
   readonly rotate: () => void;
 }
@@ -245,6 +259,26 @@ function hidUsageForCode(code: string): number | null {
   if (/^Digit[1-9]$/.test(code)) return 0x1e + (code.charCodeAt(5) - 49);
   if (code === "Digit0") return 0x27;
   return HID_USAGE_BY_CODE[code] ?? null;
+}
+
+// scrcpy drops text past 300 UTF-8 bytes in one inject message.
+const ANDROID_TEXT_CHUNK_BYTES = 300;
+const textEncoder = new TextEncoder();
+
+export function* androidTextChunks(text: string) {
+  let chunk = "";
+  let bytes = 0;
+  for (const char of text) {
+    const size = textEncoder.encode(char).length;
+    if (bytes + size > ANDROID_TEXT_CHUNK_BYTES) {
+      yield chunk;
+      chunk = "";
+      bytes = 0;
+    }
+    chunk += char;
+    bytes += size;
+  }
+  if (chunk) yield chunk;
 }
 
 const ANDROID_KEYCODE_BY_KEY: Readonly<Record<string, number>> = {
@@ -293,6 +327,9 @@ export function createDeviceStreamClient(
   let screen: DeviceScreenSize | null = null;
   let firstFrame = false;
   let configuring = false;
+  let pendingPackets: Array<ReturnType<typeof parseSemuPacket>> = [];
+  let sessionSize: string | null = null;
+  let keyframeRequested = false;
   let mjpeg = false;
 
   const mjpegUrl = () => httpUrl(`/helper/${device}/stream.mjpeg`);
@@ -400,8 +437,12 @@ export function createDeviceStreamClient(
     }
   };
 
+  // One request until a keyframe arrives: on a phone each request restarts the
+  // scrcpy session for every viewer.
   const requestKeyframe = () => {
+    if (keyframeRequested) return;
     if (platform === "android" && socket?.readyState === WebSocket.OPEN) {
+      keyframeRequested = true;
       socket.send(JSON.stringify({ type: "reset-video", ack: false }));
     }
   };
@@ -546,30 +587,58 @@ export function createDeviceStreamClient(
     ws.binaryType = "arraybuffer";
     socket = ws;
     ws.onopen = () => {
+      keyframeRequested = false;
+      sessionSize = null;
       setStatus("connecting");
       events.onInputConnected(true);
     };
     ws.onmessage = (event) => {
       if (typeof event.data === "string") {
-        // The encoder restarts at a new size when the device rotates; the
-        // next keyframe carries a fresh SPS, so the decoder is rebuilt from it.
-        if (isVideoSessionMessage(event.data)) closeDecoder();
+        const size = videoSessionSize(event.data);
+        if (size === null) return;
+        // A restart at the same size keeps the SPS, so the next keyframe decodes
+        // with this decoder. A new size (rotation) needs one rebuilt from its SPS.
+        if (size === sessionSize) {
+          awaitingKeyframe = true;
+        } else {
+          sessionSize = size;
+          closeDecoder();
+          pendingPackets = [];
+        }
         return;
       }
       if (!(event.data instanceof ArrayBuffer)) return;
       const packet = parseSemuPacket(event.data);
+      if (packet.isKey) keyframeRequested = false;
+      // Frames that arrive while the decoder configures follow its keyframe.
+      if (configuring) {
+        pendingPackets.push(packet);
+        return;
+      }
       const needsScan =
         packet.isKey === null ||
         (packet.isKey && (!videoDecoder || videoDecoder.state !== "configured"));
       const scanned = needsScan ? scanAccessUnit(packet.data) : null;
       const isKey = packet.isKey ?? scanned?.isKey ?? false;
       if (scanned?.sps && (!videoDecoder || videoDecoder.state !== "configured")) {
-        if (configuring) return;
         configuring = true;
+        pendingPackets = [packet];
         void configureDecoder({ codec: avcCodecString(scanned.sps) }).then((configured) => {
           configuring = false;
+          const queued = pendingPackets;
+          pendingPackets = [];
           awaitingKeyframe = true;
-          if (configured) requestKeyframe();
+          if (!configured) return;
+          // Decode the keyframe that carried the SPS. Requesting another restarts
+          // a phone's scrcpy session, whose `video-session` message closes this
+          // decoder again, so the stream would never paint.
+          for (const queuedPacket of queued) {
+            decode(
+              queuedPacket.isKey ?? scanAccessUnit(queuedPacket.data).isKey,
+              queuedPacket.data,
+              queuedPacket.timestamp,
+            );
+          }
         });
         return;
       }
@@ -668,6 +737,11 @@ export function createDeviceStreamClient(
         send(JSON.stringify({ type: "text", text: event.key }));
       }
     },
+    sendText: (text) => {
+      if (platform === "ios") return;
+      for (const chunk of androidTextChunks(text))
+        send(JSON.stringify({ type: "text", text: chunk }));
+    },
     pressButton: (button) => {
       if (platform === "ios") {
         const name =
@@ -679,6 +753,10 @@ export function createDeviceStreamClient(
                 ? "lock"
                 : null;
         if (name) send(taggedJson(IOS_MSG_BUTTON, { button: name }));
+        return;
+      }
+      if (button === "volumeUp" || button === "volumeDown") {
+        send(JSON.stringify({ type: "key", keycode: button === "volumeUp" ? 24 : 25 }));
         return;
       }
       const type = button === "appSwitcher" ? "recents" : button;

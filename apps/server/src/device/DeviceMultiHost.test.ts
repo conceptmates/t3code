@@ -16,7 +16,7 @@ it.effect("keeps hosts independent when serials collide and another host fails",
         hub: { origin: `http://${id}` },
         agentDevice: { baseUrl: `http://${id}`, token: "test", entryPath: "/agent-device" },
         run: () => Effect.succeed({ stdout: "", stderr: "", code: 0 }),
-        helpers: { serveSimAxSettings: null, serveSimCli: null },
+        helpers: { serveSimAxSettings: null, serveSimCli: null, scrcpyServer: null },
       };
       return {
         id,

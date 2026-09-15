@@ -78,6 +78,23 @@ function inlineTerminalLabel(record: TerminalContextRecord): string {
   return `@${slug}:${range}`;
 }
 
+/**
+ * Whether the code point beside a candidate terminal label glues it into a
+ * larger token (`email@build:7`, `@build:7foo`). Compared by code point, not
+ * by UTF-16 slice: a `[...class]$` test misfires on astral characters in some
+ * engines, so an astral letter beside a label would wrongly read as a
+ * boundary and get replaced.
+ */
+function hasAdjacentLabelChar(body: string, at: number, labelLength: number): boolean {
+  const before = Array.from(body.slice(0, at)).at(-1) ?? "";
+  if (/[\p{L}\p{N}\p{M}_@.-]/u.test(before)) return true;
+  const after = Array.from(body.slice(at + labelLength));
+  if (/[\p{L}\p{N}\p{M}_-]/u.test(after[0] ?? "")) return true;
+  let index = 0;
+  while (after[index] === "." || after[index] === "@") index += 1;
+  return index > 0 && /[\p{L}\p{N}\p{M}_-]/u.test(after[index] ?? "");
+}
+
 function legacyId(kind: string, index: number): ComposerContextId {
   return `legacy_${kind}_${index}` as ComposerContextId;
 }
@@ -416,11 +433,7 @@ export function upgradeLegacyContextMessage(text: string): UpgradedLegacyContext
     if (placedTerminals.has(record)) continue;
     const label = inlineTerminalLabel(record);
     let at = body.indexOf(label);
-    while (
-      at !== -1 &&
-      (/[\p{L}\p{N}\p{M}_@.-]$/u.test(body.slice(0, at)) ||
-        /^(?:[\p{L}\p{N}\p{M}_-]|[.@]+[\p{L}\p{N}\p{M}_-])/u.test(body.slice(at + label.length)))
-    ) {
+    while (at !== -1 && hasAdjacentLabelChar(body, at, label.length)) {
       at = body.indexOf(label, at + 1);
     }
     if (at === -1) continue;

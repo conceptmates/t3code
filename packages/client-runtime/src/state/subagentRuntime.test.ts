@@ -5,6 +5,8 @@ import {
   foldSubagentActivities,
   formatSubagentModelLabel,
   formatSubagentTokenCount,
+  liveSubagentIds,
+  singleStoppableSubagentId,
 } from "./subagentRuntime.ts";
 
 let sequence = 0;
@@ -889,5 +891,42 @@ describe("nested agents vs subagent shells", () => {
       }),
     ]);
     expect(agents.map((agent) => agent.id)).toEqual(["nested-1"]);
+  });
+});
+
+describe("singleStoppableSubagentId", () => {
+  function liveModel() {
+    return deriveAgentPanelModel({
+      agents: fold([
+        activity("task.started", { taskId: "solo-1", title: "Solo researcher" }),
+        activity("task.progress", { taskId: "solo-1", status: "running", summary: "Reading" }),
+      ]),
+    });
+  }
+
+  it("targets the sole live agent when the turn is settled", () => {
+    expect(singleStoppableSubagentId(liveModel(), false)).toBe("solo-1");
+  });
+
+  it("refuses while the turn is active (stop would over-reach the turn)", () => {
+    expect(singleStoppableSubagentId(liveModel(), true)).toBeNull();
+  });
+
+  it("refuses with two live agents (session interrupts cannot scope one)", () => {
+    const model = deriveAgentPanelModel({
+      agents: fold([
+        activity("task.started", { taskId: "a-1", title: "A" }),
+        activity("task.started", { taskId: "b-1", title: "B" }),
+      ]),
+    });
+    expect(liveSubagentIds(model)).toEqual(["a-1", "b-1"]);
+    expect(singleStoppableSubagentId(model, false)).toBeNull();
+  });
+
+  it("refuses when nothing is live", () => {
+    const model = deriveAgentPanelModel({
+      agents: fold([activity("task.completed", { taskId: "done-1", status: "completed" })]),
+    });
+    expect(singleStoppableSubagentId(model, false)).toBeNull();
   });
 });

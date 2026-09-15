@@ -156,6 +156,7 @@ import {
   filterSidebarProjectScopeItems,
   formatWorkingDurationLabel,
   firstValidTimestampMs,
+  groupThreadsByProject,
   hasUnseenCompletion,
   isSidebarNestedLinkClick,
   isTrailingDoubleClick,
@@ -165,7 +166,9 @@ import {
   resolveAdjacentThreadId,
   resolveSidebarDropTarget,
   resolveSidebarDropVerb,
+  resolveSidebarProjectGroupColor,
   type SidebarDropVerb,
+  type SidebarProjectGroupColor,
   resolveSidebarThreadStatus,
   searchSidebarThreads,
   shouldCreateNewThreadInCurrentProject,
@@ -1000,6 +1003,8 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
   environmentMachine: EnvironmentMachineKind;
   project: EnvironmentProject | null;
   projectDisplayName: string | null;
+  // Set when project color groups are on: a rail on the row and a tinted project chip.
+  projectGroupColor: SidebarProjectGroupColor | null;
   providerEntryByInstanceId: ReadonlyMap<string, ProviderInstanceEntry>;
   timestampFormat: TimestampFormat;
   onThreadClick: (event: ReactMouseEvent, threadRef: ScopedThreadRef) => void;
@@ -1397,6 +1402,15 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
   // like elevated cards while settled threads were plain rows, leaving neither
   // a useful hierarchy nor a reliable hover cue. Status now lives in the row
   // content; surface is reserved for interaction (hover, multi-select, route).
+  const projectGroupRail = props.projectGroupColor ? (
+    <span
+      aria-hidden
+      className={cn(
+        "pointer-events-none absolute inset-y-1.5 left-0 w-[3px] rounded-full",
+        props.projectGroupColor.rail,
+      )}
+    />
+  ) : null;
   const rowSurfaceClassName = cn(
     "group/sidebar-row relative w-full cursor-pointer overflow-hidden rounded-md text-left outline-none select-none",
     variantAction === "unsettle" && "[&:not(:hover):not(:focus-within)_*]:text-secondary-label/70",
@@ -1601,6 +1615,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
               />
             }
           >
+            {projectGroupRail}
             {/* Settled history recedes: dimmed favicon at rest, restored on
               hover so the tail stays scannable when you're hunting. */}
             <span
@@ -1754,6 +1769,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
             />
           }
         >
+          {projectGroupRail}
           <div className="relative z-10 h-[4.875rem] px-[var(--sidebar-row-content-inset)] py-[var(--sidebar-content-inset)]">
             <div className="flex h-5 min-w-0 items-center gap-1.5">
               {draftIndicator}
@@ -1767,7 +1783,13 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
                     shouldRecede ? "font-normal" : "font-medium",
                   )}
                 >
-                  {props.projectDisplayName}
+                  {props.projectGroupColor ? (
+                    <span className={cn("rounded-sm px-1 py-px", props.projectGroupColor.chip)}>
+                      {props.projectDisplayName}
+                    </span>
+                  ) : (
+                    props.projectDisplayName
+                  )}
                 </span>
               ) : (
                 <span className="flex-1" />
@@ -2136,6 +2158,7 @@ export default function Sidebar() {
   const confirmThreadArchive = useClientSettings((s) => s.confirmThreadArchive);
   const sidebarProjectSortOrder = useClientSettings((s) => s.sidebarProjectSortOrder);
   const timestampFormat = useClientSettings((s) => s.timestampFormat);
+  const projectColorGroupsEnabled = useClientSettings((s) => s.sidebarProjectColorGroups);
   const projectGroupingSettings = useClientSettings(selectProjectGroupingSettings);
   const {
     settleThread,
@@ -2333,6 +2356,19 @@ export default function Sidebar() {
       ),
     [projectGroups],
   );
+  // Color groups follow the same logical projects as the row labels, so one
+  // repository shared across environments is one group with one color.
+  const projectGroupKeyByKey = useMemo(
+    () =>
+      new Map<string, string>(
+        projectGroups.flatMap((group) =>
+          group.memberProjects.map(
+            (project) => [`${project.environmentId}:${project.id}`, group.projectKey] as const,
+          ),
+        ),
+      ),
+    [projectGroups],
+  );
 
   const nowMinute = useNowMinute();
   // Snooze wake times are second-precise, so classifying with the quantized
@@ -2508,10 +2544,10 @@ export default function Sidebar() {
     readonly assignedKeys: ReadonlyMap<string, string>;
   } | null>(null);
   const {
-    pinnedThreads,
+    pinnedThreads: sectionPinnedThreads,
     draggableThreadKeys,
     activeReorderableThreadKeys,
-    activeThreads,
+    activeThreads: sectionActiveThreads,
     snoozedThreads,
     settledThreads,
     snoozeNow,
@@ -2613,6 +2649,31 @@ export default function Sidebar() {
       snoozeNow: preciseNow,
     };
   }, [nowMinute, optimisticDrop, scopedProjectKeys, serverConfigs, snoozeWakeTick, threads]);
+  // A project scope already shows a single project, so there is nothing to group.
+  const projectColorGroups = projectColorGroupsEnabled && scopedProjectKeys === null;
+  const projectGroupKeyOf = useCallback(
+    (thread: { readonly environmentId: string; readonly projectId: string }) => {
+      const key = `${thread.environmentId}:${thread.projectId}`;
+      return projectGroupKeyByKey.get(key) ?? key;
+    },
+    [projectGroupKeyByKey],
+  );
+  // Grouping only reorders the rows, so drag targets, stored order keys and
+  // optimistic drops all see the grouped order the user is looking at.
+  const pinnedThreads = useMemo(
+    () =>
+      projectColorGroups
+        ? groupThreadsByProject(sectionPinnedThreads, projectGroupKeyOf)
+        : sectionPinnedThreads,
+    [projectColorGroups, projectGroupKeyOf, sectionPinnedThreads],
+  );
+  const activeThreads = useMemo(
+    () =>
+      projectColorGroups
+        ? groupThreadsByProject(sectionActiveThreads, projectGroupKeyOf)
+        : sectionActiveThreads,
+    [projectColorGroups, projectGroupKeyOf, sectionActiveThreads],
+  );
 
   const threadSearchInputRef = useRef<HTMLInputElement>(null);
   const [threadSearchQuery, setThreadSearchQuery] = useState("");
@@ -4676,6 +4737,11 @@ export default function Sidebar() {
                               projectDisplayNameByKey.get(
                                 `${thread.environmentId}:${thread.projectId}`,
                               ) ?? null
+                            }
+                            projectGroupColor={
+                              projectColorGroups
+                                ? resolveSidebarProjectGroupColor(projectGroupKeyOf(thread))
+                                : null
                             }
                             providerEntryByInstanceId={
                               providerEntriesByEnvironment.get(thread.environmentId) ??

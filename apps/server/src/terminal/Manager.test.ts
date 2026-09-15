@@ -422,6 +422,37 @@ it.layer(
     }),
   );
 
+  it.effect("runs a launch command instead of a shell and keeps it across restarts", () =>
+    Effect.gen(function* () {
+      const { manager, ptyAdapter, getEvents } = yield* createManager(5, {
+        shellResolver: () => "/bin/bash",
+      });
+      const launch = openInput({ terminalId: "launch-app" });
+
+      yield* manager.open({ ...launch, command: "exec node ./server.js" });
+      ptyAdapter.processes[0]?.emitExit({ exitCode: 3, signal: null });
+      yield* waitFor(
+        getEvents.pipe(
+          Effect.map((events) =>
+            events.some(
+              (event) =>
+                event.type === "exited" &&
+                event.terminalId === "launch-app" &&
+                event.exitCode === 3,
+            ),
+          ),
+        ),
+      );
+      yield* manager.restart(restartInput({ terminalId: "launch-app" }));
+      yield* manager.open(launch);
+
+      expect(ptyAdapter.spawnInputs.map((input) => [input.shell, input.args])).toEqual([
+        ["/bin/bash", ["-c", "exec node ./server.js"]],
+        ["/bin/bash", ["-c", "exec node ./server.js"]],
+      ]);
+    }).pipe(Effect.provide(withHostPlatform("linux"))),
+  );
+
   it.effect("attaches to running sessions without restarting them", () =>
     Effect.gen(function* () {
       const { manager, ptyAdapter } = yield* createManager();

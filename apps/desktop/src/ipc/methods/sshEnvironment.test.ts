@@ -7,9 +7,12 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import { HttpClient, HttpClientRequest, HttpClientResponse } from "effect/unstable/http";
 
+import * as DesktopAppSettings from "../../settings/DesktopAppSettings.ts";
 import {
   DesktopSshEnvironmentRequestError,
   fetchSshEnvironmentDescriptor,
+  getSshRemoteVersion,
+  setSshRemoteVersion,
 } from "./sshEnvironment.ts";
 
 function jsonResponse(request: HttpClientRequest.HttpClientRequest, body: unknown, status = 200) {
@@ -112,4 +115,19 @@ describe("SSH environment IPC", () => {
       assert.equal(requestCount, 0);
     }).pipe(Effect.provide(layer));
   });
+
+  it.effect("reports the stored SSH remote version rather than the requested one", () =>
+    Effect.gen(function* () {
+      assert.isNull(yield* getSshRemoteVersion.handler(undefined));
+      assert.equal(
+        yield* setSshRemoteVersion.handler(" 0.0.41-nightly.20260914.1707 "),
+        "0.0.41-nightly.20260914.1707",
+      );
+      assert.equal(yield* getSshRemoteVersion.handler(undefined), "0.0.41-nightly.20260914.1707");
+
+      // A version the remote runner would refuse clears the setting instead,
+      // so the UI can say the app is choosing again.
+      assert.isNull(yield* setSshRemoteVersion.handler("v0.0.41"));
+    }).pipe(Effect.provide(DesktopAppSettings.layerTest())),
+  );
 });

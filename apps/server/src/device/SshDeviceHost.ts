@@ -35,6 +35,7 @@ const Started = Schema.Struct({
   helpers: Schema.Struct({
     serveSimAxSettings: Schema.NullOr(Schema.String),
     serveSimCli: Schema.NullOr(Schema.String),
+    scrcpyServer: Schema.NullOr(Schema.String),
   }),
 });
 const decodeProbe = Schema.decodeUnknownEffect(Schema.fromJsonString(Probe));

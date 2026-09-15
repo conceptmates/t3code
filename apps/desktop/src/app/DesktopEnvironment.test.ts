@@ -50,6 +50,8 @@ describe("DesktopEnvironment", () => {
           T3CODE_PORT: "4949",
           VITE_DEV_SERVER_URL: "http://localhost:5173",
           T3CODE_DEV_REMOTE_T3_SERVER_ENTRY_PATH: " /remote/server.mjs ",
+          T3CODE_SSH_REMOTE_VERSION: " 0.0.41-nightly.20260914.1707 ",
+          T3CODE_RELEASE_BASE_URL: " https://mirror.example/t3 ",
           T3CODE_OTLP_TRACES_URL: " http://127.0.0.1:4318/v1/traces ",
           T3CODE_OTLP_EXPORT_INTERVAL_MS: "2500",
           T3CODE_OTLP_HEADERS: "authorization=Basic%20abc%3D%3D,x-tenant=t3",
@@ -83,6 +85,8 @@ describe("DesktopEnvironment", () => {
         Option.some("http://localhost:5173/"),
       );
       assert.deepEqual(environment.devRemoteT3ServerEntryPath, Option.some("/remote/server.mjs"));
+      assert.deepEqual(environment.sshRemoteVersion, Option.some("0.0.41-nightly.20260914.1707"));
+      assert.deepEqual(environment.releaseBaseUrl, Option.some("https://mirror.example/t3"));
       assert.deepEqual(environment.configuredBackendPort, Option.some(4949));
       assert.deepEqual(environment.commitHashOverride, Option.some("0123456789abcdef"));
       assert.deepEqual(environment.otlpTracesUrl, Option.some("http://127.0.0.1:4318/v1/traces"));

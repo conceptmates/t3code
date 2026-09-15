@@ -109,6 +109,24 @@ describe("DesktopSettings", () => {
         }),
       ),
   );
+  it.effect("keeps an SSH remote version only when the remote runner would accept it", () =>
+    withSettings(
+      Effect.gen(function* () {
+        const settings = yield* DesktopAppSettings.DesktopAppSettings;
+        assert.isTrue(
+          (yield* settings.setSshRemoteVersion(" 0.0.41-nightly.20260914.1707 ")).changed,
+        );
+        assert.equal((yield* settings.load).sshRemoteVersion, "0.0.41-nightly.20260914.1707");
+
+        // A version the runner would refuse means "let the app pick" rather
+        // than a launch that fails on the remote.
+        assert.isTrue((yield* settings.setSshRemoteVersion("v0.0.41")).changed);
+        assert.isNull((yield* settings.load).sshRemoteVersion);
+        assert.isFalse((yield* settings.setSshRemoteVersion("")).changed);
+      }),
+    ),
+  );
+
   it.effect("loads defaults when no settings file exists", () =>
     withSettings(
       Effect.gen(function* () {
@@ -127,6 +145,7 @@ describe("DesktopSettings", () => {
         localEnvironmentEnabled: true,
         mainWindowBounds: null,
         mainWindowMaximized: false,
+        sshRemoteVersion: null,
         serverExposureMode: "local-only",
         tailscaleServeEnabled: false,
         tailscaleServePort: 443,
@@ -157,6 +176,7 @@ describe("DesktopSettings", () => {
           localEnvironmentEnabled: true,
           mainWindowBounds: null,
           mainWindowMaximized: false,
+          sshRemoteVersion: null,
           serverExposureMode: "network-accessible",
           tailscaleServeEnabled: true,
           tailscaleServePort: 8443,
@@ -265,6 +285,7 @@ describe("DesktopSettings", () => {
           localEnvironmentEnabled: true,
           mainWindowBounds: { x: 120, y: 80, width: 1280, height: 900 },
           mainWindowMaximized: false,
+          sshRemoteVersion: null,
           serverExposureMode: "network-accessible",
           tailscaleServeEnabled: true,
           tailscaleServePort: 8443,
@@ -322,6 +343,7 @@ describe("DesktopSettings", () => {
             localEnvironmentEnabled: true,
             mainWindowBounds: null,
             mainWindowMaximized: false,
+            sshRemoteVersion: null,
             serverExposureMode: "network-accessible",
             tailscaleServeEnabled: true,
             tailscaleServePort: 8443,
@@ -371,6 +393,7 @@ describe("DesktopSettings", () => {
           localEnvironmentEnabled: true,
           mainWindowBounds: null,
           mainWindowMaximized: false,
+          sshRemoteVersion: null,
           serverExposureMode: "local-only",
           tailscaleServeEnabled: false,
           tailscaleServePort: 443,
@@ -400,6 +423,7 @@ describe("DesktopSettings", () => {
           localEnvironmentEnabled: true,
           mainWindowBounds: null,
           mainWindowMaximized: false,
+          sshRemoteVersion: null,
           serverExposureMode: "local-only",
           tailscaleServeEnabled: false,
           tailscaleServePort: 443,
@@ -428,6 +452,7 @@ describe("DesktopSettings", () => {
           localEnvironmentEnabled: true,
           mainWindowBounds: null,
           mainWindowMaximized: false,
+          sshRemoteVersion: null,
           serverExposureMode: "local-only",
           tailscaleServeEnabled: true,
           tailscaleServePort: 443,

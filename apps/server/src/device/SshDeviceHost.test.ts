@@ -66,7 +66,7 @@ it.effect("preserves installed status after probes and cleans failed agent activ
             nodePath: "/node",
             platforms: [{ platform: "ios", available: true }],
             hubPort: 1234,
-            helpers: { serveSimAxSettings: null, serveSimCli: null },
+            helpers: { serveSimAxSettings: null, serveSimCli: null, scrcpyServer: null },
             ...(mode === "agent-start"
               ? { daemonPort: 1235, token: "fixture", entryPath: "/agent.mjs" }
               : {}),

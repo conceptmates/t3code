@@ -944,6 +944,47 @@ export function sortSettledThreadsForSidebar<
     turn's start (request time until adoption), falling back to the session's
     last transition when the turn projection lags behind. Malformed
     timestamps fall through to the next candidate, not just missing ones. */
+// Browser tab group colors. Class strings stay literal so Tailwind emits them.
+export const SIDEBAR_PROJECT_GROUP_COLORS = [
+  { rail: "bg-zinc-400", chip: "bg-zinc-500/15 text-zinc-700 dark:text-zinc-300" },
+  { rail: "bg-blue-500", chip: "bg-blue-500/15 text-blue-700 dark:text-blue-300" },
+  { rail: "bg-red-500", chip: "bg-red-500/15 text-red-700 dark:text-red-300" },
+  { rail: "bg-amber-400", chip: "bg-amber-400/20 text-amber-700 dark:text-amber-300" },
+  { rail: "bg-green-500", chip: "bg-green-500/15 text-green-700 dark:text-green-300" },
+  { rail: "bg-pink-500", chip: "bg-pink-500/15 text-pink-700 dark:text-pink-300" },
+  { rail: "bg-violet-500", chip: "bg-violet-500/15 text-violet-700 dark:text-violet-300" },
+  { rail: "bg-cyan-500", chip: "bg-cyan-500/15 text-cyan-700 dark:text-cyan-300" },
+  { rail: "bg-orange-500", chip: "bg-orange-500/15 text-orange-700 dark:text-orange-300" },
+] as const;
+export type SidebarProjectGroupColor = (typeof SIDEBAR_PROJECT_GROUP_COLORS)[number];
+
+/** A project's color is derived from its key, so it stays the same across
+    reloads and devices without storing anything. */
+export function resolveSidebarProjectGroupColor(projectKey: string): SidebarProjectGroupColor {
+  let hash = 0;
+  for (let index = 0; index < projectKey.length; index += 1) {
+    hash = (hash * 31 + projectKey.charCodeAt(index)) >>> 0;
+  }
+  return SIDEBAR_PROJECT_GROUP_COLORS[hash % SIDEBAR_PROJECT_GROUP_COLORS.length]!;
+}
+
+/** Pulls each project's threads up under its first row, keeping their order
+    within the project. A group sits where its topmost thread was, so moving a
+    thread to the top moves its whole group. */
+export function groupThreadsByProject<T>(
+  threads: readonly T[],
+  projectKeyOf: (thread: T) => string,
+): readonly T[] {
+  const groups = new Map<string, T[]>();
+  for (const thread of threads) {
+    const key = projectKeyOf(thread);
+    const group = groups.get(key);
+    if (group) group.push(thread);
+    else groups.set(key, [thread]);
+  }
+  return groups.size === threads.length ? threads : [...groups.values()].flat();
+}
+
 export function resolveWorkingStartedAt(
   thread: Pick<SidebarThreadSummary, "latestTurn" | "session">,
 ): string | null {

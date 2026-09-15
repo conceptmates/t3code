@@ -32,6 +32,11 @@ export function createDeviceEnvironmentAtoms<R, E>(
       label: "environment-data:device:test-host",
       tag: WS_METHODS.deviceTestHost,
     }),
+    /** Waits minutes for a phone to scan, so it stays off the serial device queue. */
+    adbPair: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:device:adb-pair",
+      tag: WS_METHODS.deviceAdbPair,
+    }),
     list: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:device:list",
       tag: WS_METHODS.deviceList,

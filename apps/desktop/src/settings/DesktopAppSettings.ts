@@ -5,6 +5,7 @@ import {
   type DesktopUpdateChannel,
 } from "@t3tools/contracts";
 import { fromLenientJson } from "@t3tools/shared/schemaJson";
+import { isExactArchiveVersion } from "@t3tools/ssh/tunnel";
 import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
@@ -30,6 +31,9 @@ export interface DesktopSettings {
   readonly mainWindowBounds: DesktopWindowBounds | null;
   readonly mainWindowMaximized: boolean;
   readonly serverExposureMode: DesktopServerExposureMode;
+  // The t3 release an SSH remote installs. Null lets the app pick: its own
+  // version, or the newest published one when that version has no release.
+  readonly sshRemoteVersion: string | null;
   readonly tailscaleServeEnabled: boolean;
   readonly tailscaleServePort: number;
   readonly updateChannel: DesktopUpdateChannel;
@@ -79,6 +83,7 @@ export const DEFAULT_DESKTOP_SETTINGS: DesktopSettings = {
   mainWindowBounds: null,
   mainWindowMaximized: false,
   serverExposureMode: "local-only",
+  sshRemoteVersion: null,
   tailscaleServeEnabled: false,
   tailscaleServePort: DEFAULT_TAILSCALE_SERVE_PORT,
   updateChannel: "latest",
@@ -101,6 +106,7 @@ const DesktopSettingsDocument = Schema.Struct({
   mainWindowBounds: Schema.optionalKey(Schema.NullOr(DesktopWindowBoundsDocument)),
   mainWindowMaximized: Schema.optionalKey(Schema.Boolean),
   serverExposureMode: Schema.optionalKey(DesktopServerExposureModeSchema),
+  sshRemoteVersion: Schema.optionalKey(Schema.NullOr(Schema.String)),
   tailscaleServeEnabled: Schema.optionalKey(Schema.Boolean),
   tailscaleServePort: Schema.optionalKey(Schema.Number),
   updateChannel: Schema.optionalKey(DesktopUpdateChannelSchema),
@@ -165,6 +171,9 @@ export class DesktopAppSettings extends Context.Service<
     readonly setServerExposureMode: (
       mode: DesktopServerExposureMode,
     ) => Effect.Effect<DesktopSettingsChange, DesktopSettingsWriteError>;
+    readonly setSshRemoteVersion: (
+      version: string | null,
+    ) => Effect.Effect<DesktopSettingsChange, DesktopSettingsWriteError>;
     readonly setTailscaleServe: (input: {
       readonly enabled: boolean;
       readonly port: Option.Option<number>;
@@ -202,6 +211,13 @@ function normalizeTailscaleServePort(value: unknown): number {
     : DEFAULT_TAILSCALE_SERVE_PORT;
 }
 
+/** Anything the remote runner would refuse is stored as "let the app pick". */
+function normalizeSshRemoteVersion(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 && isExactArchiveVersion(trimmed) ? trimmed : null;
+}
+
 function normalizeWslDistro(value: unknown): string | null {
   return typeof value === "string" && isValidDistroName(value) ? value : null;
 }
@@ -236,6 +252,7 @@ function normalizeDesktopSettingsDocument(
     mainWindowMaximized: mainWindowBounds !== null && parsed.mainWindowMaximized === true,
     serverExposureMode:
       parsed.serverExposureMode === "network-accessible" ? "network-accessible" : "local-only",
+    sshRemoteVersion: normalizeSshRemoteVersion(parsed.sshRemoteVersion),
     tailscaleServeEnabled: parsed.tailscaleServeEnabled === true,
     tailscaleServePort: normalizeTailscaleServePort(parsed.tailscaleServePort),
     updateChannel: updateChannelConfiguredByUser
@@ -269,6 +286,9 @@ function toDesktopSettingsDocument(
   }
   if (settings.serverExposureMode !== defaults.serverExposureMode) {
     document.serverExposureMode = settings.serverExposureMode;
+  }
+  if (settings.sshRemoteVersion !== defaults.sshRemoteVersion) {
+    document.sshRemoteVersion = settings.sshRemoteVersion;
   }
   if (settings.tailscaleServeEnabled !== defaults.tailscaleServeEnabled) {
     document.tailscaleServeEnabled = settings.tailscaleServeEnabled;
@@ -305,6 +325,13 @@ function setServerExposureMode(
         ...settings,
         serverExposureMode: requestedMode,
       };
+}
+
+function setSshRemoteVersion(settings: DesktopSettings, version: string | null): DesktopSettings {
+  const normalized = normalizeSshRemoteVersion(version);
+  return settings.sshRemoteVersion === normalized
+    ? settings
+    : { ...settings, sshRemoteVersion: normalized };
 }
 
 function setMainWindowBounds(
@@ -540,6 +567,12 @@ export const make = Effect.gen(function* () {
       persist((settings) => setServerExposureMode(settings, mode)).pipe(
         Effect.withSpan("desktop.settings.setServerExposureMode", { attributes: { mode } }),
       ),
+    setSshRemoteVersion: (version) =>
+      persist((settings) => setSshRemoteVersion(settings, version)).pipe(
+        Effect.withSpan("desktop.settings.setSshRemoteVersion", {
+          attributes: { version: version ?? null },
+        }),
+      ),
     setTailscaleServe: (input) =>
       persist((settings) => setTailscaleServe(settings, input)).pipe(
         Effect.withSpan("desktop.settings.setTailscaleServe", { attributes: input }),
@@ -601,6 +634,8 @@ export const layerTest = (initialSettings: DesktopSettings = DEFAULT_DESKTOP_SET
           update((settings) => setMainWindowBounds(settings, bounds, isMaximized)),
         setServerExposureMode: (mode) =>
           update((settings) => setServerExposureMode(settings, mode)),
+        setSshRemoteVersion: (version) =>
+          update((settings) => setSshRemoteVersion(settings, version)),
         setTailscaleServe: (input) => update((settings) => setTailscaleServe(settings, input)),
         setUpdateChannel: (channel) => update((settings) => setUpdateChannel(settings, channel)),
         setWslBackendEnabled: (enabled) =>

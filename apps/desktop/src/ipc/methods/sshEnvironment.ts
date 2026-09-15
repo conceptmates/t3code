@@ -34,6 +34,7 @@ import * as Schema from "effect/Schema";
 
 import * as IpcChannels from "../channels.ts";
 import * as DesktopIpc from "../DesktopIpc.ts";
+import * as DesktopAppSettings from "../../settings/DesktopAppSettings.ts";
 import * as DesktopSshEnvironment from "../../ssh/DesktopSshEnvironment.ts";
 import * as DesktopSshPasswordPrompts from "../../ssh/DesktopSshPasswordPrompts.ts";
 
@@ -218,6 +219,29 @@ export const issueSshWebSocketTicket = DesktopIpc.makeIpcMethod({
         bearerToken,
       }),
     )(httpBaseUrl);
+  }),
+});
+
+export const getSshRemoteVersion = DesktopIpc.makeIpcMethod({
+  channel: IpcChannels.GET_SSH_REMOTE_VERSION_CHANNEL,
+  payload: Schema.Void,
+  result: Schema.NullOr(Schema.String),
+  handler: Effect.fn("desktop.ipc.sshEnvironment.getRemoteVersion")(function* () {
+    const appSettings = yield* DesktopAppSettings.DesktopAppSettings;
+    return (yield* appSettings.get).sshRemoteVersion;
+  }),
+});
+
+// Returns what was stored rather than what was asked for: a version the remote
+// runner would refuse is stored as null, and the caller shows that.
+export const setSshRemoteVersion = DesktopIpc.makeIpcMethod({
+  channel: IpcChannels.SET_SSH_REMOTE_VERSION_CHANNEL,
+  payload: Schema.NullOr(Schema.String),
+  result: Schema.NullOr(Schema.String),
+  handler: Effect.fn("desktop.ipc.sshEnvironment.setRemoteVersion")(function* (version) {
+    const appSettings = yield* DesktopAppSettings.DesktopAppSettings;
+    const change = yield* appSettings.setSshRemoteVersion(version);
+    return change.settings.sshRemoteVersion;
   }),
 });
 

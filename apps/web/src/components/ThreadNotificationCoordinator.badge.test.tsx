@@ -195,11 +195,10 @@ it("starts a fresh count after another native app window gains focus", async () 
   expect(state.badge).toHaveBeenLastCalledWith(0);
 });
 
-it.each(["off", "sound", "focused", "denied", "archived"])(
+it.each(["off", "sound", "denied", "archived"])(
   "does not show visual alerts when %s",
   async (condition) => {
     if (condition === "off" || condition === "sound") state.mode = condition;
-    if (condition === "focused") focused = true;
     if (condition === "denied") TestNotification.permission = "denied";
     await render();
     complete();
@@ -236,6 +235,16 @@ it.each(["hasPendingApprovals", "hasPendingUserInput"] as const)(
     expect(notification.close).toHaveBeenCalled();
   },
 );
+
+it("shows system alerts without adding a badge while focused with in-app alerts off", async () => {
+  focused = true;
+  await render();
+  complete();
+  await render();
+  expect(TestNotification.sent).toHaveLength(1);
+  expect(state.toast).not.toHaveBeenCalled();
+  expect(state.badge.mock.calls.every(([count]) => count === 0)).toBe(true);
+});
 
 it("shows in-app alerts without adding a badge while focused", async () => {
   state.inApp = true;

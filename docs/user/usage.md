@@ -67,6 +67,12 @@ current model's limits without leaving the conversation. The result opens above 
 closes when you dismiss it or send your next message. It uses the same snapshot as **Usage → Limits**, so it does not run the agent or refresh
 anything. The command is offered only for providers that appear under **Usage → Limits**.
 
+On web and desktop, a small row under the composer shows the thread's context use, how many skills
+it has used, and how much of the current model's 5-hour and weekly limits is used, with the time
+until each resets. Hover **Skills** for their names. Skills count when you mention them with `$`, or
+when Claude or OpenCode loads one on its own. Turn the row off in
+**Settings → General → Usage under composer**.
+
 API-key accounts may not report subscription limits. This also applies to Claude connections
 using a proxy through `ANTHROPIC_AUTH_TOKEN`.
 

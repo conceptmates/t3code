@@ -10,8 +10,14 @@ import * as Path from "effect/Path";
 import { ChildProcessSpawner } from "effect/unstable/process";
 
 import {
+  COMMIT_GRAPH_DEFAULT_PAGE_SIZE,
+  COMMIT_GRAPH_MAX_PAGE_SIZE,
+  COMMIT_OUTPUT_MAX_BYTES,
+  COMMIT_PATCH_MAX_BYTES,
   GitCommandError,
   VcsProcessExitError,
+  WorkingCopyCommitFailedError,
+  type CommitGraphFileChange,
   type VcsSwitchRefInput,
   type VcsSwitchRefResult,
   type VcsCreateRefInput,
@@ -35,6 +41,18 @@ import {
   PATCH_RENDER_PREFIX_ARGS,
   splitNullSeparatedGitStdoutPaths,
 } from "./GitVcsDriverCore.ts";
+import {
+  buildRefIndex,
+  COMMIT_GRAPH_LOG_FORMAT,
+  COMMIT_GRAPH_REF_FORMAT,
+  mergeCommitFiles,
+  outputNeedsTerminal,
+  parseCommitGraphLog,
+  parseNameStatus,
+  parseNumstat,
+  parseRefRecords,
+  parseWorkingCopyStatus,
+} from "./gitCommitGraph.ts";
 import * as VcsDriver from "./VcsDriver.ts";
 import * as VcsProcess from "./VcsProcess.ts";
 
@@ -376,6 +394,10 @@ export class GitVcsDriver extends Context.Service<
   }
 >()("t3/vcs/GitVcsDriver") {}
 
+const COMMIT_GRAPH_MAX_OUTPUT_BYTES = 8 * 1024 * 1024;
+/** Pre-commit hooks can run a full test suite, so this is deliberately long. */
+const COMMIT_TIMEOUT_MS = 10 * 60_000;
+const STAGE_PATH_CHUNK_SIZE = 200;
 const WORKSPACE_FILES_MAX_OUTPUT_BYTES = 16 * 1024 * 1024;
 const GIT_CHECK_IGNORE_MAX_STDIN_BYTES = 256 * 1024;
 const CHECKPOINT_DIFF_MAX_OUTPUT_BYTES = 10_000_000;
@@ -394,6 +416,43 @@ const nowFreshness = Effect.fn("GitVcsDriver.nowFreshness")(function* () {
     expiresAt: Option.none(),
   };
 });
+
+function chunkPaths(paths: ReadonlyArray<string>): string[][] {
+  const chunks: string[][] = [];
+  for (let index = 0; index < paths.length; index += STAGE_PATH_CHUNK_SIZE) {
+    chunks.push([...paths.slice(index, index + STAGE_PATH_CHUNK_SIZE)]);
+  }
+  return chunks;
+}
+
+function sumCounts(
+  files: ReadonlyArray<CommitGraphFileChange>,
+  key: "insertions" | "deletions",
+): number {
+  return files.reduce((total, file) => total + (file[key] ?? 0), 0);
+}
+
+function commitFailure(
+  cwd: string,
+  step: "stage" | "commit" | "push",
+  result: VcsProcess.VcsProcessOutput,
+): Effect.Effect<never, WorkingCopyCommitFailedError> {
+  // Hooks print to both streams and the user needs the whole transcript.
+  const combined = [result.stdout, result.stderr].filter((part) => part.length > 0).join("\n");
+  const truncated =
+    combined.length > COMMIT_OUTPUT_MAX_BYTES || result.stdoutTruncated || result.stderrTruncated;
+
+  return Effect.fail(
+    new WorkingCopyCommitFailedError({
+      cwd,
+      step,
+      exitCode: result.exitCode,
+      output: combined.slice(0, COMMIT_OUTPUT_MAX_BYTES),
+      outputTruncated: truncated,
+      needsTerminal: outputNeedsTerminal(combined),
+    }),
+  );
+}
 
 function chunkPathsForGitCheckIgnore(relativePaths: ReadonlyArray<string>): string[][] {
   const chunks: string[][] = [];
@@ -994,10 +1053,268 @@ export const makeVcsDriverShape = Effect.fn("makeGitVcsDriverShape")(function* (
     ),
   };
 
+  const readHeadRefName = (cwd: string) =>
+    execute({
+      operation: "GitVcsDriver.commitGraph.readHeadRefName",
+      cwd,
+      args: ["symbolic-ref", "--quiet", "HEAD"],
+      allowNonZeroExit: true,
+      maxOutputBytes: 4_096,
+    }).pipe(Effect.map((result) => (result.exitCode === 0 ? result.stdout.trim() || null : null)));
+
+  const readHeadSha = (cwd: string) =>
+    execute({
+      operation: "GitVcsDriver.commitGraph.readHeadSha",
+      cwd,
+      args: ["rev-parse", "--verify", "HEAD"],
+      allowNonZeroExit: true,
+      maxOutputBytes: 4_096,
+    }).pipe(Effect.map((result) => (result.exitCode === 0 ? result.stdout.trim() || null : null)));
+
+  /** Stages in batches so a repo-wide selection cannot overflow the arg list. */
+  const runOverPaths = (
+    operation: string,
+    cwd: string,
+    prefix: ReadonlyArray<string>,
+    paths: ReadonlyArray<string>,
+  ) =>
+    Effect.forEach(
+      chunkPaths(paths),
+      (chunk) => execute({ operation, cwd, args: [...prefix, ...chunk] }),
+      { discard: true },
+    );
+
+  const commitGraph: VcsDriver.VcsCommitGraphOps = {
+    listCommits: Effect.fn("GitVcsDriver.commitGraph.listCommits")(function* (input) {
+      const operation = "GitVcsDriver.commitGraph.listCommits";
+      if (!(yield* isInsideWorkTree(input.cwd))) {
+        return { isRepo: false, commits: [], hasMore: false, headSha: null, branch: null };
+      }
+
+      const headRefName = yield* readHeadRefName(input.cwd);
+      const branch = headRefName?.startsWith("refs/heads/")
+        ? headRefName.slice("refs/heads/".length)
+        : null;
+      const headSha = yield* readHeadSha(input.cwd);
+      if (headSha === null) {
+        // A repository with no commits yet still has a branch name.
+        return { isRepo: true, commits: [], hasMore: false, headSha: null, branch };
+      }
+
+      const limit = Math.min(
+        input.limit ?? COMMIT_GRAPH_DEFAULT_PAGE_SIZE,
+        COMMIT_GRAPH_MAX_PAGE_SIZE,
+      );
+      const skip = input.skip ?? 0;
+
+      const refsResult = yield* execute({
+        operation,
+        cwd: input.cwd,
+        args: [
+          "for-each-ref",
+          `--format=${COMMIT_GRAPH_REF_FORMAT}`,
+          "refs/heads",
+          "refs/remotes",
+          "refs/tags",
+        ],
+        maxOutputBytes: COMMIT_GRAPH_MAX_OUTPUT_BYTES,
+      });
+
+      // Explicit ref globs rather than `--all`, so T3's checkpoint refs stay out.
+      const logResult = yield* execute({
+        operation,
+        cwd: input.cwd,
+        args: [
+          "log",
+          "--branches",
+          "--remotes",
+          "--tags",
+          "HEAD",
+          "--date-order",
+          `--skip=${skip}`,
+          `--max-count=${limit + 1}`,
+          `--format=${COMMIT_GRAPH_LOG_FORMAT}`,
+        ],
+        maxOutputBytes: COMMIT_GRAPH_MAX_OUTPUT_BYTES,
+      });
+
+      const refsBySha = buildRefIndex(parseRefRecords(refsResult.stdout), headRefName);
+      const parsed = parseCommitGraphLog(
+        logResult.stdout,
+        refsBySha,
+        branch === null ? headSha : null,
+      );
+
+      return {
+        isRepo: true,
+        commits: parsed.slice(0, limit),
+        hasMore: parsed.length > limit,
+        headSha,
+        branch,
+      };
+    }),
+
+    readCommitFiles: Effect.fn("GitVcsDriver.commitGraph.readCommitFiles")(function* (input) {
+      const operation = "GitVcsDriver.commitGraph.readCommitFiles";
+      const revList = yield* execute({
+        operation,
+        cwd: input.cwd,
+        args: ["rev-list", "-1", "--parents", input.sha],
+        maxOutputBytes: 8_192,
+      });
+      const [, firstParent] = revList.stdout.trim().split(" ");
+
+      // A merge is diffed against its first parent, which is what `git show` does.
+      const range = firstParent ? [firstParent, input.sha] : ["--root", input.sha];
+      const diffArgs = ["diff-tree", "-r", "-z", "--no-commit-id", "--find-renames"];
+
+      const numstatResult = yield* execute({
+        operation,
+        cwd: input.cwd,
+        args: [...diffArgs, "--numstat", ...range],
+        maxOutputBytes: COMMIT_GRAPH_MAX_OUTPUT_BYTES,
+      });
+      const nameStatusResult = yield* execute({
+        operation,
+        cwd: input.cwd,
+        args: [...diffArgs, "--name-status", ...range],
+        maxOutputBytes: COMMIT_GRAPH_MAX_OUTPUT_BYTES,
+      });
+
+      const files = mergeCommitFiles(
+        parseNumstat(numstatResult.stdout),
+        parseNameStatus(nameStatusResult.stdout),
+      );
+
+      return {
+        files,
+        insertions: sumCounts(files, "insertions"),
+        deletions: sumCounts(files, "deletions"),
+      };
+    }),
+
+    readCommitPatch: Effect.fn("GitVcsDriver.commitGraph.readCommitPatch")(function* (input) {
+      const result = yield* execute({
+        operation: "GitVcsDriver.commitGraph.readCommitPatch",
+        cwd: input.cwd,
+        args: [
+          "show",
+          "--format=",
+          "--no-ext-diff",
+          "--patch",
+          "--find-renames",
+          // A merge's combined diff is empty, so compare against the first parent.
+          "--first-parent",
+          input.sha,
+          ...(input.path === undefined ? [] : ["--", input.path]),
+        ],
+        maxOutputBytes: COMMIT_PATCH_MAX_BYTES,
+        appendTruncationMarker: true,
+      });
+
+      return { patch: result.stdout, truncated: result.stdoutTruncated };
+    }),
+
+    readWorkingCopy: Effect.fn("GitVcsDriver.commitGraph.readWorkingCopy")(function* (input) {
+      if (!(yield* isInsideWorkTree(input.cwd))) {
+        return {
+          isRepo: false,
+          branch: null,
+          isUnborn: false,
+          staged: [],
+          unstaged: [],
+          conflicted: [],
+        };
+      }
+
+      const result = yield* execute({
+        operation: "GitVcsDriver.commitGraph.readWorkingCopy",
+        cwd: input.cwd,
+        args: ["status", "--porcelain=v2", "-z", "--branch", "--untracked-files=all"],
+        maxOutputBytes: COMMIT_GRAPH_MAX_OUTPUT_BYTES,
+      });
+
+      return { isRepo: true, ...parseWorkingCopyStatus(result.stdout) };
+    }),
+
+    setStaged: Effect.fn("GitVcsDriver.commitGraph.setStaged")(function* (input) {
+      const operation = "GitVcsDriver.commitGraph.setStaged";
+      if (input.paths.length === 0) {
+        return { stagedCount: 0 };
+      }
+
+      if (input.staged) {
+        yield* runOverPaths(operation, input.cwd, ["add", "--"], input.paths);
+        return { stagedCount: input.paths.length };
+      }
+
+      // `restore --staged` needs a HEAD to restore from; before the first
+      // commit the only way back out of the index is to drop the entry.
+      const headSha = yield* readHeadSha(input.cwd);
+      const prefix =
+        headSha === null ? ["rm", "--cached", "-r", "--"] : ["restore", "--staged", "--"];
+      yield* runOverPaths(operation, input.cwd, prefix, input.paths);
+      return { stagedCount: input.paths.length };
+    }),
+
+    commit: Effect.fn("GitVcsDriver.commitGraph.commit")(function* (input) {
+      const operation = "GitVcsDriver.commitGraph.commit";
+
+      if (input.stageAll) {
+        // `-u` matches `git commit -a`: tracked edits and deletions, no new files.
+        const stageResult = yield* execute({
+          operation,
+          cwd: input.cwd,
+          args: ["add", "-u"],
+          allowNonZeroExit: true,
+          maxOutputBytes: COMMIT_OUTPUT_MAX_BYTES,
+        });
+        if (stageResult.exitCode !== 0) {
+          return yield* commitFailure(input.cwd, "stage", stageResult);
+        }
+      }
+
+      const commitResult = yield* execute({
+        operation,
+        cwd: input.cwd,
+        args: [
+          "commit",
+          "--file=-",
+          "--cleanup=strip",
+          ...(input.amend === true ? ["--amend"] : []),
+        ],
+        stdin: input.message,
+        env: {
+          ...process.env,
+          // Nothing here can answer a prompt, so fail fast instead of hanging.
+          GIT_TERMINAL_PROMPT: "0",
+          GIT_EDITOR: "true",
+        },
+        allowNonZeroExit: true,
+        timeoutMs: COMMIT_TIMEOUT_MS,
+        maxOutputBytes: COMMIT_OUTPUT_MAX_BYTES,
+      });
+      if (commitResult.exitCode !== 0) {
+        return yield* commitFailure(input.cwd, "commit", commitResult);
+      }
+
+      const commitSha = yield* readHeadSha(input.cwd);
+      const headRefName = yield* readHeadRefName(input.cwd);
+
+      return {
+        commitSha: commitSha ?? "",
+        branch: headRefName?.startsWith("refs/heads/")
+          ? headRefName.slice("refs/heads/".length)
+          : null,
+      };
+    }),
+  };
+
   return {
     capabilities,
     execute,
     checkpoints,
+    commitGraph,
     detectRepository,
     isInsideWorkTree,
     listWorkspaceFiles,

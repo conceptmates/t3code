@@ -1281,6 +1281,14 @@ export interface DesktopBridge {
     readonly port?: number;
   }) => Promise<DesktopServerExposureState>;
   getAdvertisedEndpoints: () => Promise<readonly AdvertisedEndpoint[]>;
+  /**
+   * The t3 release SSH environments install on their remote, or null to let
+   * the app choose. Optional while older desktop shells can host a newer web
+   * client. Returns the stored value, which is null when the given one is not
+   * a version the remote runner accepts.
+   */
+  getSshRemoteVersion?: () => Promise<string | null>;
+  setSshRemoteVersion?: (version: string | null) => Promise<string | null>;
   getWslState: () => Promise<DesktopWslState>;
   setWslBackendEnabled: (enabled: boolean) => Promise<DesktopWslState>;
   setWslDistro: (distro: string | null) => Promise<DesktopWslState>;

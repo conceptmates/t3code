@@ -54,6 +54,10 @@ export const DEFAULT_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [
   { key: "mod+shift+arrowup", command: "modelPicker.previousProvider", when: "modelPickerOpen" },
   { key: "mod+shift+arrowdown", command: "modelPicker.nextProvider", when: "modelPickerOpen" },
   { key: "mod+o", command: "editor.openFavorite" },
+  // VS Code's run keys, desktop only: in a browser F5 reloads the page.
+  { key: "f5", command: "launch.run", when: "desktop" },
+  { key: "shift+f5", command: "launch.stop", when: "desktop" },
+  { key: "mod+shift+f5", command: "launch.restart", when: "desktop" },
   { key: "mod+shift+[", command: "thread.previous" },
   { key: "mod+shift+]", command: "thread.next" },
   { key: "mod+shift+c", command: "thread.copyReference", when: "!terminalFocus" },
