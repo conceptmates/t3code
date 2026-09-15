@@ -20,6 +20,7 @@ import {
   readPathFromLaunchctl,
   readPathFromLoginShell,
   resolveCommandPath,
+  resolveKnownPosixCliDirs,
   resolveKnownWindowsCliDirs,
   resolveSpawnCommand,
   resolveWindowsEnvironment,
@@ -331,6 +332,22 @@ describe("resolveKnownWindowsCliDirs", () => {
       "C:\\Users\\testuser\\.bun\\bin",
       "C:\\Users\\testuser\\scoop\\shims",
     ]);
+  });
+});
+
+describe("resolveKnownPosixCliDirs", () => {
+  it("returns home-based CLI install directories plus well-known system bins", () => {
+    expect(resolveKnownPosixCliDirs({ HOME: "/home/testuser" })).toEqual([
+      "/home/testuser/.opencode/bin",
+      "/home/testuser/.local/bin",
+      "/home/testuser/.bun/bin",
+      "/opt/homebrew/bin",
+      "/usr/local/bin",
+    ]);
+  });
+
+  it("keeps system bins when HOME is missing", () => {
+    expect(resolveKnownPosixCliDirs({})).toEqual(["/opt/homebrew/bin", "/usr/local/bin"]);
   });
 });
 

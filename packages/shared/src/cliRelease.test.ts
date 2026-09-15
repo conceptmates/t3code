@@ -8,6 +8,7 @@ import {
   cliReleaseChannelOf,
   cliReleaseIndexPageUrl,
   newestCliReleaseVersion,
+  newestInstallableCliReleaseVersion,
   parseChecksums,
 } from "./cliRelease.ts";
 
@@ -83,6 +84,26 @@ describe("cliRelease", () => {
     expect(newestCliReleaseVersion(releases, "nightly")).toBe("1.2.4-nightly.20260912.7");
     expect(newestCliReleaseVersion(releases, "stable")).toBe("1.2.3");
     expect(newestCliReleaseVersion([{ tag_name: "v1.2.3" }], "preview")).toBeUndefined();
+  });
+
+  it("picks the newest installable release, preferring stable and skipping preview", () => {
+    const checksums = [{ name: "SHA256SUMS" }];
+    const releases = [
+      { tag_name: "v1.2.5-preview.20260913.9", assets: checksums },
+      { tag_name: "v1.2.5-nightly.20260913.8", draft: true, assets: checksums },
+      { tag_name: "v1.2.4-nightly.20260912.7", assets: checksums },
+      // Older, but stable wins over any nightly.
+      { tag_name: "v1.2.3", assets: checksums },
+    ];
+    expect(newestInstallableCliReleaseVersion(releases)).toBe("1.2.3");
+
+    // A release that only carried desktop installers is not installable.
+    const desktopOnly = [
+      { tag_name: "v1.2.3", assets: [{ name: "T3-Code-1.2.3-arm64.dmg" }] },
+      { tag_name: "v1.2.2-nightly.20260911.1", assets: checksums },
+    ];
+    expect(newestInstallableCliReleaseVersion(desktopOnly)).toBe("1.2.2-nightly.20260911.1");
+    expect(newestInstallableCliReleaseVersion([{ tag_name: "v1.2.3" }])).toBeUndefined();
   });
 
   it("pages through the release index at the largest page GitHub allows", () => {

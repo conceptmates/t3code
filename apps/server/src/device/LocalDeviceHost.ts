@@ -41,6 +41,7 @@ import * as ProcessRunner from "../processRunner.ts";
 import * as DeviceHost from "./DeviceHost.ts";
 import {
   agentDeviceStateDir,
+  DEVICE_HUB_SCRCPY_VERSION,
   type DeviceToolPaths,
   ensureAgentDevice,
   ensureDeviceHub,
@@ -555,6 +556,7 @@ export const make = Effect.fn("LocalDeviceHost.make")(function* () {
       helpers: {
         serveSimAxSettings: axExists ? candidate.serveSimAxSettings : null,
         serveSimCli: cliExists ? candidate.serveSimCli : null,
+        scrcpyServer: candidate.scrcpyServer,
       },
     };
     yield* Ref.set(runningRef, next);
@@ -613,6 +615,15 @@ export const make = Effect.fn("LocalDeviceHost.make")(function* () {
     return {
       serveSimAxSettings: path.join(serveSimDist, "simax", "serve-sim-ax-settings"),
       serveSimCli: path.join(serveSimDist, "serve-sim.js"),
+      scrcpyServer: path.join(
+        hubTool.installDir,
+        "node_modules",
+        "expo-device-hub",
+        "vendor",
+        "serve-emu",
+        "vendor",
+        `scrcpy-server-v${DEVICE_HUB_SCRCPY_VERSION}`,
+      ),
     };
   };
 

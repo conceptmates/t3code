@@ -512,7 +512,12 @@ if ! t3_runtime_ready; then
     else printf 'Remote host needs curl or wget to download %s.\\n' "$T3_ARCHIVE" >&2; exit 1
     fi
   }
-  t3_fetch "$T3_RELEASE_BASE_URL/v$T3_ARCHIVE_VERSION/SHA256SUMS" "$T3_STAGING/SHA256SUMS" @@T3_ARCHIVE_CHECKSUMS_SECONDS@@
+  # The checksums fetch is the first request, so it is where an unpublished
+  # version (a self-built app, or a platform with no archive) surfaces.
+  if ! T3_FETCH_ERROR="$(t3_fetch "$T3_RELEASE_BASE_URL/v$T3_ARCHIVE_VERSION/SHA256SUMS" "$T3_STAGING/SHA256SUMS" @@T3_ARCHIVE_CHECKSUMS_SECONDS@@ 2>&1)"; then
+    printf 'No t3 %s release archive is published for %s-%s (%s: %s).\\nSelf-built apps have no release to download; relaunch with T3CODE_SSH_REMOTE_VERSION set to a published version.\\n' "$T3_ARCHIVE_VERSION" "$T3_PLATFORM" "$T3_ARCH" "$T3_RELEASE_BASE_URL/v$T3_ARCHIVE_VERSION" "$T3_FETCH_ERROR" >&2
+    exit 1
+  fi
   t3_fetch "$T3_RELEASE_BASE_URL/v$T3_ARCHIVE_VERSION/$T3_ARCHIVE" "$T3_STAGING/$T3_ARCHIVE" @@T3_ARCHIVE_DOWNLOAD_SECONDS@@
   T3_EXPECTED="$(grep " \\*\\{0,1\\}$T3_ARCHIVE$" "$T3_STAGING/SHA256SUMS" | cut -d' ' -f1)"
   if command -v sha256sum >/dev/null 2>&1; then
@@ -780,6 +785,11 @@ export class SshInvalidArchiveVersionError extends Schema.TaggedError<SshInvalid
 // metacharacters beyond what SemVer allows.
 const EXACT_ARCHIVE_VERSION =
   /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/u;
+
+/** Whether a version is one the remote runner accepts as a runtime directory. */
+export function isExactArchiveVersion(version: string): boolean {
+  return EXACT_ARCHIVE_VERSION.test(version);
+}
 
 export class SshMissingRunnerError extends Schema.TaggedError<SshMissingRunnerError>()(
   "SshMissingRunnerError",

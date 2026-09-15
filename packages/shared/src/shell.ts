@@ -682,6 +682,26 @@ export function resolveKnownWindowsCliDirs(env: NodeJS.ProcessEnv): ReadonlyArra
   ];
 }
 
+/**
+ * POSIX counterpart to {@link resolveKnownWindowsCliDirs}: directories that
+ * commonly hold provider CLIs but are missing from the minimal PATH a server
+ * inherits over non-interactive SSH. The native OpenCode installer lands in
+ * `~/.opencode/bin`, which login shells only see when the user's rc files add
+ * it — remote `t3 serve` launches regularly start without it, so the OpenCode
+ * version probe fails with ENOENT and the provider never appears.
+ */
+export function resolveKnownPosixCliDirs(env: NodeJS.ProcessEnv): ReadonlyArray<string> {
+  const home = env.HOME?.trim();
+
+  return [
+    ...(home ? [`${home}/.opencode/bin`] : []),
+    ...(home ? [`${home}/.local/bin`] : []),
+    ...(home ? [`${home}/.bun/bin`] : []),
+    "/opt/homebrew/bin",
+    "/usr/local/bin",
+  ];
+}
+
 function readWindowsEnvironmentSafely(
   readEnvironment: WindowsShellEnvironmentReader,
   names: ReadonlyArray<string>,

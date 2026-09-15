@@ -3,8 +3,11 @@ import { defaultAnimateLayoutChanges, type AnimateLayoutChanges } from "@dnd-kit
 import * as Cause from "effect/Cause";
 import { AsyncResult } from "effect/unstable/reactivity";
 import {
+  SIDEBAR_PROJECT_GROUP_COLORS,
   animateSidebarLayoutChanges,
   applySidebarThreadDrop,
+  groupThreadsByProject,
+  resolveSidebarProjectGroupColor,
   archiveSelectedThreadEntries,
   buildBulkTitleRegenerationContextMenuItem,
   buildBulkUnpinContextMenuItem,
@@ -2499,6 +2502,54 @@ describe("resolveSidebarDropVerb", () => {
     expect(resolveSidebarDropVerb("pinned", "pinned")).toBeNull();
     expect(resolveSidebarDropVerb("active", null)).toBeNull();
     expect(resolveSidebarDropVerb("active", "snoozed")).toBeNull();
+  });
+});
+
+describe("groupThreadsByProject", () => {
+  const projectOf = (thread: { readonly project: string }) => thread.project;
+
+  it("places each project's threads where its topmost thread was, keeping their order", () => {
+    const threads = [
+      { id: "a1", project: "a" },
+      { id: "b1", project: "b" },
+      { id: "a2", project: "a" },
+      { id: "c1", project: "c" },
+      { id: "b2", project: "b" },
+    ];
+
+    expect(groupThreadsByProject(threads, projectOf).map((thread) => thread.id)).toEqual([
+      "a1",
+      "a2",
+      "b1",
+      "b2",
+      "c1",
+    ]);
+  });
+
+  it("returns the same list when every thread is already its own group", () => {
+    const threads = [
+      { id: "a1", project: "a" },
+      { id: "b1", project: "b" },
+    ];
+
+    expect(groupThreadsByProject(threads, projectOf)).toBe(threads);
+  });
+});
+
+describe("resolveSidebarProjectGroupColor", () => {
+  it("gives a project the same palette color every time", () => {
+    const color = resolveSidebarProjectGroupColor("env-1:project-1");
+
+    expect(SIDEBAR_PROJECT_GROUP_COLORS).toContain(color);
+    expect(resolveSidebarProjectGroupColor("env-1:project-1")).toBe(color);
+  });
+
+  it("spreads different projects across the palette", () => {
+    const colors = new Set(
+      Array.from({ length: 50 }, (_, index) => resolveSidebarProjectGroupColor(`project-${index}`)),
+    );
+
+    expect(colors.size).toBeGreaterThan(SIDEBAR_PROJECT_GROUP_COLORS.length / 2);
   });
 });
 

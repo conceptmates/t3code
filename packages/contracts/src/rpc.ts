@@ -162,6 +162,35 @@ import {
   ProjectWriteFileResult,
 } from "./project.ts";
 import {
+  CommitGraphCommitFilesInput,
+  CommitGraphCommitFilesResult,
+  CommitGraphListInput,
+  CommitGraphListResult,
+  CommitMessageSuggestionInput,
+  CommitMessageSuggestionResult,
+  CommitPatchInput,
+  CommitPatchResult,
+  WorkingCopyCommitFailedError,
+  WorkingCopyCommitInput,
+  WorkingCopyCommitResult,
+  WorkingCopyStageInput,
+  WorkingCopyStageResult,
+  WorkingCopyStatusInput,
+  WorkingCopyStatusResult,
+} from "./commitGraph.ts";
+import {
+  LaunchListConfigsError,
+  LaunchListConfigsInput,
+  LaunchListConfigsResult,
+  LaunchRunError,
+  LaunchRunInput,
+  LaunchRunResult,
+  LaunchStartersInput,
+  LaunchStartersResult,
+  LaunchStopError,
+  LaunchStopInput,
+} from "./launchConfig.ts";
+import {
   TerminalAttachInput,
   TerminalAttachStreamEvent,
   TerminalClearInput,
@@ -192,6 +221,9 @@ import {
 } from "./preview.ts";
 import {
   DeviceActionInput,
+  DeviceAdbPairInput,
+  DeviceAdbPairingError,
+  DeviceAdbPairResult,
   DeviceCloseInput,
   DeviceConfigureInput,
   DeviceDetail,
@@ -280,6 +312,12 @@ export const WS_METHODS = {
   projectsSearchEntries: "projects.searchEntries",
   projectsWriteFile: "projects.writeFile",
 
+  // Launch configuration methods
+  launchListConfigs: "launch.listConfigs",
+  launchRun: "launch.run",
+  launchStop: "launch.stop",
+  launchStarters: "launch.starters",
+
   // Shell methods
   shellOpenInEditor: "shell.openInEditor",
 
@@ -313,6 +351,13 @@ export const WS_METHODS = {
   vcsCreateRef: "vcs.createRef",
   vcsSwitchRef: "vcs.switchRef",
   vcsInit: "vcs.init",
+  vcsCommitGraph: "vcs.commitGraph",
+  vcsCommitFiles: "vcs.commitFiles",
+  vcsWorkingCopyStatus: "vcs.workingCopyStatus",
+  vcsStage: "vcs.stage",
+  vcsCommit: "vcs.commit",
+  vcsSuggestCommitMessage: "vcs.suggestCommitMessage",
+  vcsCommitPatch: "vcs.commitPatch",
 
   // Git workflow methods
   gitRunStackedAction: "git.runStackedAction",
@@ -353,6 +398,7 @@ export const WS_METHODS = {
   deviceShutdown: "device.shutdown",
   deviceDetail: "device.detail",
   deviceAction: "device.action",
+  deviceAdbPair: "device.adbPair",
 
   // Server meta
   serverProbe: "server.probe",
@@ -921,6 +967,29 @@ const WsProjectsWriteFileRpc = Rpc.make(WS_METHODS.projectsWriteFile, {
   error: Schema.Union([ProjectWriteFileError, EnvironmentAuthorizationError]),
 });
 
+const WsLaunchListConfigsRpc = Rpc.make(WS_METHODS.launchListConfigs, {
+  payload: LaunchListConfigsInput,
+  success: LaunchListConfigsResult,
+  error: Schema.Union([LaunchListConfigsError, EnvironmentAuthorizationError]),
+});
+
+const WsLaunchRunRpc = Rpc.make(WS_METHODS.launchRun, {
+  payload: LaunchRunInput,
+  success: LaunchRunResult,
+  error: Schema.Union([LaunchRunError, EnvironmentAuthorizationError]),
+});
+
+const WsLaunchStartersRpc = Rpc.make(WS_METHODS.launchStarters, {
+  payload: LaunchStartersInput,
+  success: LaunchStartersResult,
+  error: EnvironmentAuthorizationError,
+});
+
+const WsLaunchStopRpc = Rpc.make(WS_METHODS.launchStop, {
+  payload: LaunchStopInput,
+  error: Schema.Union([LaunchStopError, EnvironmentAuthorizationError]),
+});
+
 const WsShellOpenInEditorRpc = Rpc.make(WS_METHODS.shellOpenInEditor, {
   payload: LaunchEditorInput,
   error: Schema.Union([ExternalLauncherError, EnvironmentAuthorizationError]),
@@ -1057,11 +1126,57 @@ const WsVcsInitRpc = Rpc.make(WS_METHODS.vcsInit, {
   error: Schema.Union([VcsError, EnvironmentAuthorizationError]),
 });
 
+const WsVcsCommitGraphRpc = Rpc.make(WS_METHODS.vcsCommitGraph, {
+  payload: CommitGraphListInput,
+  success: CommitGraphListResult,
+  error: Schema.Union([GitCommandError, EnvironmentAuthorizationError]),
+});
+
+const WsVcsCommitFilesRpc = Rpc.make(WS_METHODS.vcsCommitFiles, {
+  payload: CommitGraphCommitFilesInput,
+  success: CommitGraphCommitFilesResult,
+  error: Schema.Union([GitCommandError, EnvironmentAuthorizationError]),
+});
+
+const WsVcsWorkingCopyStatusRpc = Rpc.make(WS_METHODS.vcsWorkingCopyStatus, {
+  payload: WorkingCopyStatusInput,
+  success: WorkingCopyStatusResult,
+  error: Schema.Union([GitCommandError, EnvironmentAuthorizationError]),
+});
+
+const WsVcsStageRpc = Rpc.make(WS_METHODS.vcsStage, {
+  payload: WorkingCopyStageInput,
+  success: WorkingCopyStageResult,
+  error: Schema.Union([GitCommandError, EnvironmentAuthorizationError]),
+});
+
+const WsVcsCommitRpc = Rpc.make(WS_METHODS.vcsCommit, {
+  payload: WorkingCopyCommitInput,
+  success: WorkingCopyCommitResult,
+  error: Schema.Union([
+    WorkingCopyCommitFailedError,
+    GitCommandError,
+    EnvironmentAuthorizationError,
+  ]),
+});
+
 /**
  * Ephemeral live diff preview for compact/mobile surfaces.
  * Not the persisted T3 Review model. Future review sessions should use
  * review.open* + review.getSnapshot.
  */
+const WsVcsCommitPatchRpc = Rpc.make(WS_METHODS.vcsCommitPatch, {
+  payload: CommitPatchInput,
+  success: CommitPatchResult,
+  error: Schema.Union([GitCommandError, EnvironmentAuthorizationError]),
+});
+
+const WsVcsSuggestCommitMessageRpc = Rpc.make(WS_METHODS.vcsSuggestCommitMessage, {
+  payload: CommitMessageSuggestionInput,
+  success: CommitMessageSuggestionResult,
+  error: Schema.Union([GitManagerServiceError, EnvironmentAuthorizationError]),
+});
+
 const WsReviewGetDiffPreviewRpc = Rpc.make(WS_METHODS.reviewGetDiffPreview, {
   payload: ReviewDiffPreviewInput,
   success: ReviewDiffPreviewResult,
@@ -1229,6 +1344,12 @@ const WsDeviceActionRpc = Rpc.make(WS_METHODS.deviceAction, {
   payload: DeviceActionInput,
   success: DeviceDetail,
   error: Schema.Union([DeviceError, EnvironmentAuthorizationError]),
+});
+
+const WsDeviceAdbPairRpc = Rpc.make(WS_METHODS.deviceAdbPair, {
+  payload: DeviceAdbPairInput,
+  success: DeviceAdbPairResult,
+  error: Schema.Union([DeviceAdbPairingError, DeviceError, EnvironmentAuthorizationError]),
 });
 
 const WsSubscribeDeviceStateRpc = Rpc.make(WS_METHODS.subscribeDeviceState, {
@@ -1431,6 +1552,10 @@ export const WsRpcGroup = RpcGroup.make(
   WsProjectsSearchContentsRpc,
   WsProjectsSearchEntriesRpc,
   WsProjectsWriteFileRpc,
+  WsLaunchListConfigsRpc,
+  WsLaunchRunRpc,
+  WsLaunchStopRpc,
+  WsLaunchStartersRpc,
   WsShellOpenInEditorRpc,
   WsFilesystemBrowseRpc,
   WsAgentSessionsScanRpc,
@@ -1453,6 +1578,13 @@ export const WsRpcGroup = RpcGroup.make(
   WsVcsCreateRefRpc,
   WsVcsSwitchRefRpc,
   WsVcsInitRpc,
+  WsVcsCommitGraphRpc,
+  WsVcsCommitFilesRpc,
+  WsVcsWorkingCopyStatusRpc,
+  WsVcsStageRpc,
+  WsVcsCommitRpc,
+  WsVcsSuggestCommitMessageRpc,
+  WsVcsCommitPatchRpc,
   WsReviewGetDiffPreviewRpc,
   WsReviewGetDiffFileContentsRpc,
   WsTerminalOpenRpc,
@@ -1484,6 +1616,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsDeviceShutdownRpc,
   WsDeviceDetailRpc,
   WsDeviceActionRpc,
+  WsDeviceAdbPairRpc,
   WsSubscribeDeviceStateRpc,
   WsSubscribeServerConfigRpc,
   WsSubscribeServerLifecycleRpc,

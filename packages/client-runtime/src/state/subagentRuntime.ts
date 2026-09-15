@@ -902,7 +902,11 @@ export function liveSubagentIds(model: AgentPanelModel): string[] {
     if (isActiveSubagentStatus(agent.status)) ids.push(agent.id);
   }
   for (const group of model.workflows) {
-    if (isActiveSubagentStatus(group.workflow.status) && group.unphasedMembers.length === 0 && group.phases.length === 0) {
+    if (
+      isActiveSubagentStatus(group.workflow.status) &&
+      group.unphasedMembers.length === 0 &&
+      group.phases.length === 0
+    ) {
       ids.push(group.workflow.id);
     }
     for (const phase of group.phases) {

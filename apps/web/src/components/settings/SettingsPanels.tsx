@@ -527,6 +527,9 @@ export function useSettingsRestore(onRestored?: () => void) {
         ? ["Contrast"]
         : []),
       ...(settings.glassOpacity !== DEFAULT_UNIFIED_SETTINGS.glassOpacity ? ["Glass opacity"] : []),
+      ...(settings.sidebarProjectColorGroups !== DEFAULT_UNIFIED_SETTINGS.sidebarProjectColorGroups
+        ? ["Project color groups"]
+        : []),
       ...(settings.diffColorScheme !== DEFAULT_UNIFIED_SETTINGS.diffColorScheme
         ? ["Diff colors"]
         : []),
@@ -577,6 +580,9 @@ export function useSettingsRestore(onRestored?: () => void) {
         : []),
       ...(settings.composerCollapseOnScroll !== DEFAULT_UNIFIED_SETTINGS.composerCollapseOnScroll
         ? ["Collapse composer on scroll"]
+        : []),
+      ...(settings.composerUsageRowEnabled !== DEFAULT_UNIFIED_SETTINGS.composerUsageRowEnabled
+        ? ["Usage under composer"]
         : []),
       ...(settings.contextWindowMeterEnabled !== DEFAULT_UNIFIED_SETTINGS.contextWindowMeterEnabled
         ? ["Context window indicator"]
@@ -636,6 +642,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       settings.confirmThreadDelete,
       settings.confirmThreadUnpin,
       settings.composerCollapseOnScroll,
+      settings.composerUsageRowEnabled,
       settings.addProjectBaseDirectory,
       settings.defaultThreadEnvMode,
       settings.newWorktreesStartFromOrigin,
@@ -654,6 +661,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       settings.fontSizePrompt,
       settings.fontSizeTerminal,
       settings.glassOpacity,
+      settings.sidebarProjectColorGroups,
       settings.panelAnimationDurationMs,
       settings.responseStreamingMode,
       settings.enableProviderUpdateChecks,
@@ -748,9 +756,11 @@ export function useSettingsRestore(onRestored?: () => void) {
       proactivePanelsEnabled: DEFAULT_UNIFIED_SETTINGS.proactivePanelsEnabled,
       showSkillsInSlashMenu: DEFAULT_UNIFIED_SETTINGS.showSkillsInSlashMenu,
       composerCollapseOnScroll: DEFAULT_UNIFIED_SETTINGS.composerCollapseOnScroll,
+      composerUsageRowEnabled: DEFAULT_UNIFIED_SETTINGS.composerUsageRowEnabled,
       contextWindowMeterEnabled: DEFAULT_UNIFIED_SETTINGS.contextWindowMeterEnabled,
       environmentIdentificationMode: DEFAULT_UNIFIED_SETTINGS.environmentIdentificationMode,
       glassOpacity: DEFAULT_UNIFIED_SETTINGS.glassOpacity,
+      sidebarProjectColorGroups: DEFAULT_UNIFIED_SETTINGS.sidebarProjectColorGroups,
       panelAnimationDurationMs: DEFAULT_UNIFIED_SETTINGS.panelAnimationDurationMs,
       sidebarThreadPreviewCount: DEFAULT_UNIFIED_SETTINGS.sidebarThreadPreviewCount,
       sidebarProjectGroupingMode: DEFAULT_UNIFIED_SETTINGS.sidebarProjectGroupingMode,
@@ -1362,6 +1372,32 @@ export function AppearanceSettingsPanel() {
                 </SelectPopup>
               </Select>
             </div>
+          }
+        />
+        <SettingsRow
+          {...searchableSetting("sidebar-project-color-groups")}
+          description="Group pinned and active threads in the sidebar by project, with a color for each project."
+          resetAction={
+            settings.sidebarProjectColorGroups !==
+            DEFAULT_UNIFIED_SETTINGS.sidebarProjectColorGroups ? (
+              <SettingResetButton
+                label="project color groups"
+                onClick={() =>
+                  updateSettings({
+                    sidebarProjectColorGroups: DEFAULT_UNIFIED_SETTINGS.sidebarProjectColorGroups,
+                  })
+                }
+              />
+            ) : null
+          }
+          control={
+            <Switch
+              checked={settings.sidebarProjectColorGroups}
+              onCheckedChange={(checked) =>
+                updateSettings({ sidebarProjectColorGroups: Boolean(checked) })
+              }
+              aria-label="Project color groups"
+            />
           }
         />
       </SettingsSection>
@@ -2585,6 +2621,33 @@ export function GeneralSettingsPanel() {
                 updateSettings({ composerCollapseOnScroll: Boolean(checked) })
               }
               aria-label="Collapse composer on scroll"
+            />
+          }
+        />
+
+        <SettingsRow
+          {...searchableSetting("composer-usage-row")}
+          description="Show context use, skills used, and the provider's 5-hour and weekly limits under the composer."
+          resetAction={
+            settings.composerUsageRowEnabled !==
+            DEFAULT_UNIFIED_SETTINGS.composerUsageRowEnabled ? (
+              <SettingResetButton
+                label="usage under composer"
+                onClick={() =>
+                  updateSettings({
+                    composerUsageRowEnabled: DEFAULT_UNIFIED_SETTINGS.composerUsageRowEnabled,
+                  })
+                }
+              />
+            ) : null
+          }
+          control={
+            <Switch
+              checked={settings.composerUsageRowEnabled}
+              onCheckedChange={(checked) =>
+                updateSettings({ composerUsageRowEnabled: Boolean(checked) })
+              }
+              aria-label="Usage under composer"
             />
           }
         />

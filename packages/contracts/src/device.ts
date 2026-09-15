@@ -297,6 +297,12 @@ export const DeviceActionInput = Schema.Union([
   }),
   Schema.Struct({
     ...DeviceTarget,
+    /** Physical Android panel power. The mirrored stream keeps running while it is off. */
+    type: Schema.Literal("setScreenPower"),
+    value: Schema.Boolean,
+  }),
+  Schema.Struct({
+    ...DeviceTarget,
     type: Schema.Literal("setLocation"),
     latitude: Schema.Number.check(Schema.isBetween({ minimum: -90, maximum: 90 })),
     longitude: Schema.Number.check(Schema.isBetween({ minimum: -180, maximum: 180 })),
@@ -334,6 +340,42 @@ export type DeviceActionType = DeviceActionInput["type"];
 
 export const DeviceDetailInput = Schema.Struct(DeviceTarget);
 export type DeviceDetailInput = typeof DeviceDetailInput.Type;
+
+const AdbAddress = TrimmedNonEmptyString.check(Schema.isPattern(/^[^\s-]\S*:\d{1,5}$/));
+
+/**
+ * Android wireless debugging, run with adb on the device host. `qr` waits for
+ * the phone to advertise the service name encoded in the QR code, `code` pairs
+ * with the address and six-digit code the phone shows, and `connect` reconnects
+ * a phone that is already paired.
+ */
+export const DeviceAdbPairInput = Schema.Union([
+  Schema.Struct({
+    hostId: Schema.optional(DeviceHostId),
+    method: Schema.Literal("qr"),
+    serviceName: TrimmedNonEmptyString.check(Schema.isPattern(/^[\w-]{1,64}$/)),
+    password: TrimmedNonEmptyString.check(Schema.isPattern(/^\w{1,64}$/)),
+  }),
+  Schema.Struct({
+    hostId: Schema.optional(DeviceHostId),
+    method: Schema.Literal("code"),
+    address: AdbAddress,
+    code: TrimmedNonEmptyString.check(Schema.isPattern(/^\d{6}$/)),
+  }),
+  Schema.Struct({
+    hostId: Schema.optional(DeviceHostId),
+    method: Schema.Literal("connect"),
+    address: AdbAddress,
+  }),
+]);
+export type DeviceAdbPairInput = typeof DeviceAdbPairInput.Type;
+
+export const DeviceAdbPairResult = Schema.Struct({
+  hostId: DeviceHostId,
+  /** The adb serial the phone connected as; null when it paired but advertised no debugging port. */
+  serial: Schema.NullOr(Schema.String),
+});
+export type DeviceAdbPairResult = typeof DeviceAdbPairResult.Type;
 
 export class DeviceHostUnavailableError extends Schema.TaggedError<DeviceHostUnavailableError>()(
   "DeviceHostUnavailableError",
@@ -428,6 +470,24 @@ export class DeviceActionUnavailableError extends Schema.TaggedError<DeviceActio
     return this.reason === "helper_missing"
       ? `Device ${this.operation} requires a helper missing from this install. Set up device support again.`
       : `Device ${this.operation} is not supported on ${this.platform}.`;
+  }
+}
+
+export class DeviceAdbPairingError extends Schema.TaggedError<DeviceAdbPairingError>()(
+  "DeviceAdbPairingError",
+  {
+    reason: Schema.Literals(["not_found", "pair_failed", "connect_failed"]),
+    detail: Schema.optional(Schema.String),
+  },
+) {
+  override get message(): string {
+    const explanation = {
+      not_found:
+        "The phone did not show up. Keep its pairing screen open and make sure it is on the same network as the device host.",
+      pair_failed: "Pairing failed. Check the code and try again.",
+      connect_failed: "The phone could not be connected.",
+    }[this.reason];
+    return this.detail ? `${explanation} adb: ${this.detail}` : explanation;
   }
 }
 

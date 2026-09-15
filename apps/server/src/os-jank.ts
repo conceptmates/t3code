@@ -4,6 +4,7 @@ import {
   mergePathEntries,
   readPathFromLoginShell,
   readPathFromLaunchctl,
+  resolveKnownPosixCliDirs,
   resolveWindowsEnvironment,
 } from "@t3tools/shared/shell";
 import * as Effect from "effect/Effect";
@@ -31,8 +32,15 @@ function hydratePosixPath(env: NodeJS.ProcessEnv, platform: NodeJS.Platform): vo
 
   const launchctlPath = platform === "darwin" && !shellPath ? readPathFromLaunchctl() : undefined;
   const mergedPath = mergePathEntries(shellPath ?? launchctlPath, env.PATH, platform);
-  if (mergedPath) {
-    env.PATH = mergedPath;
+  // Remote `t3 serve` launches over non-interactive SSH regularly start
+  // without the full interactive-shell PATH. These directories fill the gaps
+  // when neither the login shell nor the inherited environment names them
+  // (notably the native OpenCode installer at `~/.opencode/bin`), mirroring
+  // the known-CLI-dirs fallback Windows hydration already applies.
+  const knownCliPath = resolveKnownPosixCliDirs(env).join(":");
+  const hydratedPath = mergePathEntries(mergedPath, knownCliPath, platform);
+  if (hydratedPath) {
+    env.PATH = hydratedPath;
   }
 }
 

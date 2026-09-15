@@ -50,6 +50,8 @@ import {
   LinkIcon,
   MessageSquareIcon,
   PaletteIcon,
+  GitBranchIcon,
+  PlayIcon,
   SettingsIcon,
   SquarePenIcon,
   TextSearchIcon,
@@ -1730,6 +1732,28 @@ function OpenCommandPaletteDialog(props: {
         },
       });
     }
+
+    actionItems.push({
+      kind: "action",
+      value: "action:open-run-and-debug",
+      searchTerms: ["run", "debug", "launch", "launch.json", "configuration"],
+      title: "Open Run & Debug",
+      icon: <PlayIcon className={ITEM_ICON_CLASS} />,
+      run: async () => {
+        useRightPanelStore.getState().open(threadRef, "launch");
+      },
+    });
+
+    actionItems.push({
+      kind: "action",
+      value: "action:open-source-control",
+      searchTerms: ["source control", "commit", "graph", "git", "stage", "history"],
+      title: "Open Source Control",
+      icon: <GitBranchIcon className={ITEM_ICON_CLASS} />,
+      run: async () => {
+        useRightPanelStore.getState().open(threadRef, "commit-graph");
+      },
+    });
   }
 
   actionItems.push({

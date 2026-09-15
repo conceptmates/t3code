@@ -5,6 +5,22 @@ import * as Layer from "effect/Layer";
 import {
   GitManagerError,
   GitCommandError,
+  WorkingCopyCommitFailedError,
+  type CommitGraphCommitFilesInput,
+  type CommitGraphCommitFilesResult,
+  type CommitGraphListInput,
+  type CommitGraphListResult,
+  type CommitMessageSuggestionInput,
+  type CommitMessageSuggestionResult,
+  type CommitPatchInput,
+  type CommitPatchResult,
+  type VcsError,
+  type WorkingCopyCommitInput,
+  type WorkingCopyCommitResult,
+  type WorkingCopyStageInput,
+  type WorkingCopyStageResult,
+  type WorkingCopyStatusInput,
+  type WorkingCopyStatusResult,
   type VcsSwitchRefInput,
   type VcsSwitchRefResult,
   type VcsCreateRefInput,
@@ -110,6 +126,27 @@ export class GitWorkflowService extends Context.Service<
       readonly oldBranch: string;
       readonly newBranch: string;
     }) => Effect.Effect<{ readonly branch: string }, GitManagerServiceError>;
+    readonly commitGraph: (
+      input: CommitGraphListInput,
+    ) => Effect.Effect<CommitGraphListResult, GitCommandError>;
+    readonly commitFiles: (
+      input: CommitGraphCommitFilesInput,
+    ) => Effect.Effect<CommitGraphCommitFilesResult, GitCommandError>;
+    readonly commitPatch: (
+      input: CommitPatchInput,
+    ) => Effect.Effect<CommitPatchResult, GitCommandError>;
+    readonly workingCopyStatus: (
+      input: WorkingCopyStatusInput,
+    ) => Effect.Effect<WorkingCopyStatusResult, GitCommandError>;
+    readonly stage: (
+      input: WorkingCopyStageInput,
+    ) => Effect.Effect<WorkingCopyStageResult, GitCommandError>;
+    readonly commitWorkingCopy: (
+      input: WorkingCopyCommitInput,
+    ) => Effect.Effect<WorkingCopyCommitResult, GitCommandError | WorkingCopyCommitFailedError>;
+    readonly suggestCommitMessage: (
+      input: CommitMessageSuggestionInput,
+    ) => Effect.Effect<CommitMessageSuggestionResult, GitManagerServiceError>;
   }
 >()("t3/git/GitWorkflowService") {}
 
@@ -269,6 +306,47 @@ export const make = Effect.gen(function* () {
     (input: Input) =>
       ensureGit(operation, input.cwd).pipe(Effect.andThen(run(input)));
 
+  const asGitCommandError = (operation: string, cwd: string) => (cause: VcsError) =>
+    new GitCommandError({
+      operation,
+      command: "git",
+      cwd,
+      detail: cause.message,
+      cause,
+    });
+
+  /**
+   * Resolves the driver's Source Control operations. A VCS kind that does not
+   * implement them fails here, which is what greys the surface out.
+   */
+  const commitGraphOps = Effect.fn("GitWorkflowService.commitGraphOps")(function* (
+    operation: string,
+    cwd: string,
+  ) {
+    const handle = yield* registry.resolve({ cwd }).pipe(
+      Effect.mapError(
+        (cause) =>
+          new GitCommandError({
+            operation,
+            command: "vcs-route",
+            cwd,
+            detail: "Failed to resolve the VCS driver for this Source Control command.",
+            cause,
+          }),
+      ),
+    );
+    const ops = handle.driver.commitGraph;
+    if (!ops) {
+      return yield* new GitCommandError({
+        operation,
+        command: "vcs-route",
+        cwd,
+        detail: `Source Control is not supported for ${handle.kind} repositories.`,
+      });
+    }
+    return ops;
+  });
+
   return GitWorkflowService.of({
     isRepository: (cwd) =>
       registry.detect({ cwd }).pipe(
@@ -380,6 +458,101 @@ export const make = Effect.gen(function* () {
       ensureGit("GitWorkflowService.renameBranch", input.cwd).pipe(
         Effect.andThen(git.renameBranch(input)),
       ),
+    suggestCommitMessage: routeGitManager(
+      "GitWorkflowService.suggestCommitMessage",
+      gitManager.suggestCommitMessage,
+    ),
+    commitGraph: Effect.fn("GitWorkflowService.commitGraph")(function* (input) {
+      const operation = "GitWorkflowService.commitGraph";
+      if (!(yield* detectGitRepositoryForCommand(operation, input.cwd))) {
+        return { isRepo: false, commits: [], hasMore: false, headSha: null, branch: null };
+      }
+      const ops = yield* commitGraphOps(operation, input.cwd);
+      return yield* ops
+        .listCommits(input)
+        .pipe(Effect.mapError(asGitCommandError(operation, input.cwd)));
+    }),
+    commitFiles: Effect.fn("GitWorkflowService.commitFiles")(function* (input) {
+      const operation = "GitWorkflowService.commitFiles";
+      const ops = yield* commitGraphOps(operation, input.cwd);
+      return yield* ops
+        .readCommitFiles(input)
+        .pipe(Effect.mapError(asGitCommandError(operation, input.cwd)));
+    }),
+    commitPatch: Effect.fn("GitWorkflowService.commitPatch")(function* (input) {
+      const operation = "GitWorkflowService.commitPatch";
+      const ops = yield* commitGraphOps(operation, input.cwd);
+      return yield* ops
+        .readCommitPatch(input)
+        .pipe(Effect.mapError(asGitCommandError(operation, input.cwd)));
+    }),
+    workingCopyStatus: Effect.fn("GitWorkflowService.workingCopyStatus")(function* (input) {
+      const operation = "GitWorkflowService.workingCopyStatus";
+      if (!(yield* detectGitRepositoryForCommand(operation, input.cwd))) {
+        return {
+          isRepo: false,
+          branch: null,
+          isUnborn: false,
+          staged: [],
+          unstaged: [],
+          conflicted: [],
+        };
+      }
+      const ops = yield* commitGraphOps(operation, input.cwd);
+      return yield* ops
+        .readWorkingCopy(input)
+        .pipe(Effect.mapError(asGitCommandError(operation, input.cwd)));
+    }),
+    stage: Effect.fn("GitWorkflowService.stage")(function* (input) {
+      const operation = "GitWorkflowService.stage";
+      const ops = yield* commitGraphOps(operation, input.cwd);
+      return yield* ops
+        .setStaged(input)
+        .pipe(Effect.mapError(asGitCommandError(operation, input.cwd)));
+    }),
+    commitWorkingCopy: Effect.fn("GitWorkflowService.commitWorkingCopy")(function* (input) {
+      const operation = "GitWorkflowService.commitWorkingCopy";
+      const ops = yield* commitGraphOps(operation, input.cwd);
+      const { push: shouldPush, ...commitInput } = input;
+      const committed = yield* ops
+        .commit(commitInput)
+        .pipe(
+          Effect.mapError((cause) =>
+            cause._tag === "WorkingCopyCommitFailedError"
+              ? cause
+              : asGitCommandError(operation, input.cwd)(cause),
+          ),
+        );
+
+      if (shouldPush !== true) {
+        return { ...committed, push: null };
+      }
+
+      // The commit already landed, so a push failure is reported against the
+      // push step rather than pretending the whole operation failed.
+      const pushed = yield* git.pushCurrentBranch(input.cwd, committed.branch).pipe(
+        Effect.mapError(
+          (cause) =>
+            new WorkingCopyCommitFailedError({
+              cwd: input.cwd,
+              step: "push",
+              exitCode: cause.exitCode ?? 1,
+              output: cause.detail,
+              outputTruncated: false,
+              needsTerminal: false,
+            }),
+        ),
+      );
+
+      return {
+        ...committed,
+        push: {
+          status: pushed.status,
+          branch: pushed.branch,
+          setUpstream: pushed.setUpstream ?? false,
+        },
+      };
+    }),
   });
 });
 

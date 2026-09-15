@@ -67,6 +67,8 @@ export interface DeviceHostReady {
   readonly helpers: {
     readonly serveSimAxSettings: string | null;
     readonly serveSimCli: string | null;
+    /** scrcpy server jar the hub downloads on its first Android scrcpy stream. May not exist yet. */
+    readonly scrcpyServer: string | null;
   };
 }
 

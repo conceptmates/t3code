@@ -203,6 +203,18 @@
       "types": "./src/state/terminal.ts",
       "default": "./src/state/terminal.ts"
     },
+    "./state/launch": {
+      "types": "./src/state/launch.ts",
+      "default": "./src/state/launch.ts"
+    },
+    "./state/commit-graph": {
+      "types": "./src/state/commitGraph.ts",
+      "default": "./src/state/commitGraph.ts"
+    },
+    "./launch-sessions": {
+      "types": "./src/launchSessions.ts",
+      "default": "./src/launchSessions.ts"
+    },
     "./state/threads": {
       "types": "./src/state/threads.ts",
       "default": "./src/state/threads.ts"

@@ -804,4 +804,28 @@ describe("archive runner script", () => {
       }).pipe(Effect.provide(NodeServices.layer)),
     60_000,
   );
+
+  it.effect.skipIf(windowsHost)(
+    "names the unpublished version and the override when no archive exists",
+    () =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const root = yield* fs.makeTempDirectoryScoped({ prefix: "t3-archive-missing-" });
+        yield* fs.makeDirectory(`${root}/mirror`, { recursive: true });
+        const runner = `${root}/run-t3.sh`;
+        yield* fs.writeFileString(
+          runner,
+          buildRemoteT3RunnerScript({ archiveVersion, releaseBaseUrl: `file://${root}/mirror` }),
+        );
+        const home = `${root}/home`;
+        yield* fs.makeDirectory(home, { recursive: true });
+
+        const result = yield* runRunner(home, runner);
+        assert.notEqual(result.exitCode, 0);
+        assert.include(result.stderr, `No t3 ${archiveVersion} release archive is published`);
+        assert.include(result.stderr, "T3CODE_SSH_REMOTE_VERSION");
+        assert.deepEqual(yield* fs.readDirectory(`${home}/.t3/runtime/versions`), []);
+      }).pipe(Effect.provide(NodeServices.layer)),
+    60_000,
+  );
 });

@@ -85,9 +85,9 @@ const MATERIAL_ICON_BY_FILE_NAME: Record<string, RemappedIcon> = {
   "Cargo.toml": tokenedIcon("file-tree-builtin-rust", "rust"),
   "Cargo.lock": tokenedIcon("file-tree-builtin-rust", "rust"),
   "pyproject.toml": tokenedIcon("file-tree-builtin-python", "python"),
-  "Makefile": tokenedIcon("file-tree-builtin-text", "text"),
-  "makefile": tokenedIcon("file-tree-builtin-text", "text"),
-  "GNUmakefile": tokenedIcon("file-tree-builtin-text", "text"),
+  Makefile: tokenedIcon("file-tree-builtin-text", "text"),
+  makefile: tokenedIcon("file-tree-builtin-text", "text"),
+  GNUmakefile: tokenedIcon("file-tree-builtin-text", "text"),
 };
 
 const MATERIAL_ICON_BY_FILE_NAME_CONTAINS: Record<string, RemappedIcon> = {
@@ -142,7 +142,10 @@ const MATERIAL_FOLDER_COLORS: Record<string, readonly [light: string, dark: stri
 
 type MaterialFolderGroup = "blue" | "green" | "gray" | "orange" | "purple" | "red" | "pink";
 
-const MATERIAL_FOLDER_COLOR_BY_GROUP: Record<MaterialFolderGroup, readonly [light: string, dark: string]> = {
+const MATERIAL_FOLDER_COLOR_BY_GROUP: Record<
+  MaterialFolderGroup,
+  readonly [light: string, dark: string]
+> = {
   blue: ["#1a85d4", "#69b1ff"],
   green: ["#199f43", "#5ecc71"],
   gray: ["#84848a", "#adadb1"],
@@ -196,7 +199,9 @@ const MATERIAL_FOLDER_GROUP_BY_NAME: Record<string, MaterialFolderGroup> = {
 
 export const MATERIAL_FOLDER_ICON_SYMBOL = "t3-folder-material";
 
-export function materialFolderColorsForPath(pathValue: string): readonly [light: string, dark: string] {
+export function materialFolderColorsForPath(
+  pathValue: string,
+): readonly [light: string, dark: string] {
   const base = basenameOfPath(pathValue).toLowerCase();
   const direct = MATERIAL_FOLDER_COLORS[base];
   if (direct) return direct;

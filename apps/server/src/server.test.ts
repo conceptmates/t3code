@@ -158,6 +158,8 @@ import * as BrowserTraceCollector from "./observability/BrowserTraceCollector.ts
 import * as NativeAppIconResolver from "./assets/NativeAppIconResolver.ts";
 import * as ProjectFaviconResolver from "./project/ProjectFaviconResolver.ts";
 import * as T3ProjectFileLoader from "./project/T3ProjectFileLoader.ts";
+import * as LaunchConfigs from "./launch/LaunchConfigs.ts";
+import * as LaunchSessions from "./launch/LaunchSessions.ts";
 import * as ProjectSetupScriptRunner from "./project/ProjectSetupScriptRunner.ts";
 import * as RepositoryIdentityResolver from "./project/RepositoryIdentityResolver.ts";
 import * as ServerEnvironment from "./environment/ServerEnvironment.ts";
@@ -718,6 +720,7 @@ const buildAppUnderTest = (options?: {
         Layer.provide(T3ProjectFileLoader.layer),
       ),
       NativeAppIconResolver.layer,
+      LaunchConfigs.layer,
     );
     const gitWorkflowLayer = GitWorkflowService.layer.pipe(
       Layer.provideMerge(vcsDriverRegistryLayer),
@@ -935,6 +938,7 @@ const buildAppUnderTest = (options?: {
           Layer.mock(TerminalManager.TerminalManager)({
             ...options?.layers?.terminalManager,
           }),
+          Layer.mock(LaunchSessions.LaunchSessions)({}),
           WorktreeSetupTracker.layer,
           ProjectCloneTracker.layer.pipe(
             Layer.provide(

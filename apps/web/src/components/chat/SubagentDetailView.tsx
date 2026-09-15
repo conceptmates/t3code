@@ -47,18 +47,29 @@ export const SubagentDetailView = memo(function SubagentDetailView({
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background">
       <div className="flex items-center gap-2 border-b border-border/60 px-3 py-2">
-        <Button type="button" variant="ghost" size="sm" onClick={onBack} aria-label="Back to main thread">
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={onBack}
+          aria-label="Back to main thread"
+        >
           <ArrowLeft aria-hidden className="size-4" />
           Back to main
         </Button>
-        <span aria-hidden className={cn("size-1.5 shrink-0 rounded-full", dotClassFor(agent.status))} />
+        <span
+          aria-hidden
+          className={cn("size-1.5 shrink-0 rounded-full", dotClassFor(agent.status))}
+        />
         <span className="min-w-0 truncate text-sm font-medium">{agent.title}</span>
         {agent.role ? (
           <span className="max-w-28 shrink-0 truncate rounded-sm border border-border/60 px-1 font-mono text-[.65rem] text-muted-foreground">
             {agent.role}
           </span>
         ) : null}
-        <span className="ml-auto shrink-0 text-xs text-muted-foreground">{statusLabelFor(agent.status)}</span>
+        <span className="ml-auto shrink-0 text-xs text-muted-foreground">
+          {statusLabelFor(agent.status)}
+        </span>
         {live && canStop && onStop ? (
           <Button
             type="button"
@@ -93,7 +104,10 @@ export const SubagentDetailView = memo(function SubagentDetailView({
               </ol>
             ) : null}
           </section>
-          <section aria-label="Activity" className="rounded-lg border border-border/60 bg-card/40 p-3">
+          <section
+            aria-label="Activity"
+            className="rounded-lg border border-border/60 bg-card/40 p-3"
+          >
             <div className="text-[.65rem] font-medium uppercase tracking-wider text-muted-foreground">
               Activity
             </div>
@@ -103,7 +117,10 @@ export const SubagentDetailView = memo(function SubagentDetailView({
             {agent.recentActivity.length > 0 ? (
               <ol className="mt-1.5 flex flex-col gap-1.5">
                 {agent.recentActivity.map((entry, index) => (
-                  <li key={`${entry.at}-${index}`} className="text-xs leading-relaxed text-muted-foreground">
+                  <li
+                    key={`${entry.at}-${index}`}
+                    className="text-xs leading-relaxed text-muted-foreground"
+                  >
                     {entry.summary}
                   </li>
                 ))}
@@ -111,9 +128,14 @@ export const SubagentDetailView = memo(function SubagentDetailView({
             ) : (
               <p className="mt-1.5 text-xs text-muted-foreground">No activity yet.</p>
             )}
-            {agent.error ? <p className="mt-2 text-xs text-destructive-foreground">{agent.error}</p> : null}
+            {agent.error ? (
+              <p className="mt-2 text-xs text-destructive-foreground">{agent.error}</p>
+            ) : null}
           </section>
-          <section aria-label="Metrics" className="rounded-lg border border-border/60 bg-card/40 p-3">
+          <section
+            aria-label="Metrics"
+            className="rounded-lg border border-border/60 bg-card/40 p-3"
+          >
             <div className="text-[.65rem] font-medium uppercase tracking-wider text-muted-foreground">
               Metrics
             </div>

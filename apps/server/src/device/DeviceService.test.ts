@@ -11,12 +11,17 @@ import * as Deferred from "effect/Deferred";
 import * as Fiber from "effect/Fiber";
 import * as PubSub from "effect/PubSub";
 import * as Ref from "effect/Ref";
+import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import { HttpClient, HttpClientResponse } from "effect/unstable/http";
 import { ServerSettingsService } from "../serverSettings.ts";
 import * as DeviceHost from "./DeviceHost.ts";
 
 import { type DeviceService, makeWithHosts, stateStream } from "./DeviceService.ts";
+
+const decodeStreamModeBody = Schema.decodeUnknownSync(
+  Schema.fromJsonString(Schema.Struct({ mode: Schema.String })),
+);
 
 const baseState: DeviceServiceState = {
   hosts: [],
@@ -61,18 +66,29 @@ const fixture = Effect.fn("fixture")(function* (
   onBoot: Effect.Effect<void> = Effect.void,
   bootError?: string,
   failListAfterShutdown = false,
+  physical = false,
 ) {
   const settings = yield* Ref.make(DEFAULT_SERVER_SETTINGS);
   const starts: string[] = [];
   const agentStarts: string[] = [];
   const agentStops: string[] = [];
   const requests: string[] = [];
+  const streamModeRequests: string[] = [];
+  let streamMode = "grpc-screenshot";
+  const phone = {
+    id: "192.168.1.50:5555",
+    name: "Pixel 8",
+    platform: "android",
+    version: "Android 15",
+    booted: true,
+    physical: true,
+  };
   let booted = false;
   let shutDown = false;
   const ready: DeviceHost.DeviceHostReady = {
     nodePath: process.execPath,
     hub: { origin: "http://device.test" },
-    helpers: { serveSimAxSettings: null, serveSimCli: null },
+    helpers: { serveSimAxSettings: null, serveSimCli: null, scrcpyServer: null },
     run: () => Effect.succeed({ code: 0, stdout: "Pixel_API_35\n", stderr: "" }),
   };
   const host: DeviceHost.DeviceHost["Service"] = {
@@ -135,6 +151,20 @@ const fixture = Effect.fn("fixture")(function* (
       HttpClient.make((request) =>
         Effect.gen(function* () {
           requests.push(request.url);
+          if (request.url.includes("/api/stream-mode")) {
+            if (request.method === "PUT" && request.body._tag === "Uint8Array") {
+              streamMode = decodeStreamModeBody(new TextDecoder().decode(request.body.body)).mode;
+              streamModeRequests.push(`PUT ${streamMode}`);
+            } else {
+              streamModeRequests.push(request.method);
+            }
+            return HttpClientResponse.fromWeb(
+              request,
+              streamMode === "scrcpy"
+                ? Response.json({ ok: true, mode: streamMode })
+                : Response.json({ ok: false }, { status: 503 }),
+            );
+          }
           if (request.url.includes("/api/screenshot")) {
             return HttpClientResponse.fromWeb(
               request,
@@ -166,25 +196,28 @@ const fixture = Effect.fn("fixture")(function* (
             request,
             Response.json({
               simulators: [],
-              emulators: booted
-                ? [
-                    {
-                      id: "emulator-5554",
-                      name: "Pixel_API_35",
-                      platform: "android",
-                      version: "Android 15",
-                      booted: true,
-                      physical: false,
-                    },
-                  ]
-                : [],
+              emulators: [
+                ...(booted
+                  ? [
+                      {
+                        id: "emulator-5554",
+                        name: "Pixel_API_35",
+                        platform: "android",
+                        version: "Android 15",
+                        booted: true,
+                        physical: false,
+                      },
+                    ]
+                  : []),
+                ...(physical ? [phone] : []),
+              ],
             }),
           );
         }),
       ),
     ),
   );
-  return { service, starts, agentStarts, agentStops, requests, settings };
+  return { service, starts, agentStarts, agentStops, requests, streamModeRequests, settings };
 });
 
 describe("device setup consent", () => {
@@ -335,5 +368,44 @@ it.effect("keeps shutdown successful when subsequent discovery fails", () =>
     const state = yield* service.state;
     expect(state.sessions).toEqual([]);
     expect(state.devices.find((device) => device.id === session.deviceId)?.booted).toBe(false);
+  }).pipe(Effect.scoped),
+);
+
+it.effect("switches a physical Android device to scrcpy only when its stream is not already", () =>
+  Effect.gen(function* () {
+    const { service, streamModeRequests } = yield* fixture(Effect.void, undefined, false, true);
+    yield* service.configure({ enabled: true });
+    const threadId = ThreadId.make("physical-android");
+    yield* service.open({ threadId, deviceId: "192.168.1.50:5555", platform: "android" });
+    yield* service.open({ threadId, deviceId: "192.168.1.50:5555", platform: "android" });
+    expect(streamModeRequests).toEqual(["GET", "PUT scrcpy", "GET"]);
+  }).pipe(Effect.scoped),
+);
+
+it.effect("leaves emulator streams on the hub's default source", () =>
+  Effect.gen(function* () {
+    const { service, streamModeRequests } = yield* fixture();
+    yield* service.configure({ enabled: true });
+    yield* service.open({
+      threadId: ThreadId.make("emulator"),
+      deviceId: "Pixel_API_35",
+      platform: "android",
+    });
+    expect(streamModeRequests).toEqual([]);
+  }).pipe(Effect.scoped),
+);
+
+it.effect("names the thread's open device for its shells and agents", () =>
+  Effect.gen(function* () {
+    const { service } = yield* fixture();
+    yield* service.configure({ enabled: true });
+    const threadId = ThreadId.make("device-env");
+    expect(yield* service.threadDeviceEnvironment(threadId)).toEqual({});
+    yield* service.open({ threadId, deviceId: "Pixel_API_35", platform: "android" });
+    expect(yield* service.threadDeviceEnvironment(threadId)).toEqual({
+      T3CODE_DEVICE_ID: "emulator-5554",
+      T3CODE_DEVICE_PLATFORM: "android",
+      ANDROID_SERIAL: "emulator-5554",
+    });
   }).pipe(Effect.scoped),
 );

@@ -195,7 +195,8 @@ function AgentRow({
   const selectLabel = `${agent.title}, ${statusLabel}. ${selected ? "Selected. Activate to go back." : "Show in main view."}`;
   const rowClass = cn(
     "grid h-[3.875rem] grid-cols-[0.375rem_minmax(0,1fr)_auto] grid-rows-[1.25rem_1.125rem_1rem] items-center gap-x-2 rounded-md px-1.5 py-1",
-    selectable && "w-full cursor-pointer text-left transition-colors duration-150 hover:bg-accent/40",
+    selectable &&
+      "w-full cursor-pointer text-left transition-colors duration-150 hover:bg-accent/40",
     selectable && selected && "bg-accent/60 ring-1 ring-border",
     !selectable && "hover:bg-accent/20",
     failed && "bg-destructive/[0.04]",

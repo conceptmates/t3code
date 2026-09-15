@@ -31,6 +31,8 @@ const pendingRpcAckRequests = new Map<string, PendingRpcAckRequest>();
 const untrackedRpcAckMethods = new Set<string>([
   WS_METHODS.previewAutomationConnect,
   WS_METHODS.serverGetUsageSummary,
+  // Waits for a phone to scan a pairing QR code, however long that takes.
+  WS_METHODS.deviceAdbPair,
 ]);
 const longRunningRpcAckMethods = new Set<string>([
   WS_METHODS.serverUpdateProvider,
