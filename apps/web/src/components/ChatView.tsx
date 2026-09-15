@@ -209,6 +209,8 @@ import { PullRequestDetailGhost } from "./pullRequest/PullRequestGhosts";
 import { PullRequestsUnavailableState } from "./pullRequest/PullRequestsUnavailableState";
 import { RightPanelTabs } from "./RightPanelTabs";
 import { AgentsPanel } from "./AgentsPanel";
+import { ClaudePlanCard } from "./chat/ClaudePlanCard";
+import { SubagentDetailView } from "./chat/SubagentDetailView";
 import { LinkPullRequestDialogHost } from "./pullRequest/LinkPullRequestDialog";
 import { ThreadPullRequestsPanel } from "./pullRequest/ThreadPullRequestsPanel";
 import { useDeviceState } from "~/state/device";
@@ -2875,6 +2877,35 @@ export default function ChatView(props: ChatViewProps) {
       }),
     [agentSessionLive, threadActivities],
   );
+  // Desktop-only Claude-style sub-agent selection: UI-only state that swaps
+  // the main column to the selected agent. Web/mobile never set it.
+  const [selectedSubagentId, setSelectedSubagentId] = useState<string | null>(null);
+  useEffect(() => {
+    setSelectedSubagentId(null);
+  }, [activeThreadId]);
+  const selectedSubagent = useMemo(() => {
+    if (!isElectron || !selectedSubagentId) return null;
+    const direct = agentPanelModel.directAgents.find((agent) => agent.id === selectedSubagentId);
+    if (direct) return direct;
+    for (const group of agentPanelModel.workflows) {
+      if (group.workflow.id === selectedSubagentId) return group.workflow;
+      for (const phase of group.phases) {
+        const member = phase.members.find((entry) => entry.id === selectedSubagentId);
+        if (member) return member;
+      }
+      const unphased = group.unphasedMembers.find((entry) => entry.id === selectedSubagentId);
+      if (unphased) return unphased;
+    }
+    return null;
+  }, [agentPanelModel, selectedSubagentId]);
+  useEffect(() => {
+    if (!isElectron || !selectedSubagent) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setSelectedSubagentId(null);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [selectedSubagent]);
   const { approvals: pendingApprovals, userInputs: pendingUserInputs } = useMemo(
     () => derivePendingRequests(threadActivities),
     [threadActivities],
@@ -6177,6 +6208,39 @@ export default function ChatView(props: ChatViewProps) {
     }
     const working = activeBackgroundLiveness === "working";
     const liveCount = agentPanelModel.liveCount;
+    const label = working
+      ? liveCount > 0
+        ? `${liveCount} ${liveCount === 1 ? "agent" : "agents"} working`
+        : "Background work"
+      : "Monitoring";
+    const openAgentsFromBanner = () => {
+      addAgentsSurface();
+      // Desktop-only: a single live agent swaps straight into the main view
+      // (Claude-style). Multiple agents leave the choice to the Agents list.
+      if (!isElectron) return;
+      const live: string[] = [];
+      for (const agent of agentPanelModel.directAgents) {
+        if (agent.status === "pending" || agent.status === "running" || agent.status === "waiting") {
+          live.push(agent.id);
+        }
+      }
+      for (const group of agentPanelModel.workflows) {
+        const members = [
+          ...group.phases.flatMap((phase) => phase.members),
+          ...group.unphasedMembers,
+        ];
+        for (const member of members) {
+          if (
+            member.status === "pending" ||
+            member.status === "running" ||
+            member.status === "waiting"
+          ) {
+            live.push(member.id);
+          }
+        }
+      }
+      if (live.length === 1 && live[0]) setSelectedSubagentId(live[0]);
+    };
     return {
       id: `background-liveness:${activeThread.id}`,
       variant: "default",
@@ -6187,11 +6251,16 @@ export default function ChatView(props: ChatViewProps) {
           aria-hidden="true"
         />
       ),
-      title: working
-        ? liveCount > 0
-          ? `${liveCount} ${liveCount === 1 ? "agent" : "agents"} working`
-          : "Background work"
-        : "Monitoring",
+      title: (
+        <button
+          type="button"
+          onClick={openAgentsFromBanner}
+          aria-label={`${label}. Show agents.`}
+          className="cursor-pointer truncate text-left transition-colors duration-150 hover:text-foreground"
+        >
+          {label}
+        </button>
+      ),
       actions: (
         <Button
           size="xs"
@@ -6206,7 +6275,10 @@ export default function ChatView(props: ChatViewProps) {
   }, [
     activeBackgroundLiveness,
     activeThread,
+    addAgentsSurface,
+    agentPanelModel.directAgents,
     agentPanelModel.liveCount,
+    agentPanelModel.workflows,
     handleStopBackgroundWork,
     isStoppingBackgroundWork,
   ]);
@@ -9200,6 +9272,8 @@ export default function ChatView(props: ChatViewProps) {
         model={agentPanelModel}
         environmentId={activeThreadRef?.environmentId ?? null}
         threadId={activeThreadRef?.threadId ?? null}
+        selectedAgentId={isElectron ? selectedSubagentId : null}
+        onSelectAgent={isElectron ? setSelectedSubagentId : undefined}
       />
     ) : renderedRightPanelSurface?.kind === "device" ? (
       <Suspense fallback={null}>
@@ -9388,7 +9462,19 @@ export default function ChatView(props: ChatViewProps) {
             </div>
             {/* Messages Wrapper */}
             <div className="relative flex min-h-0 flex-1 flex-col bg-background">
-              {/* Messages — LegendList handles virtualization and scrolling internally */}
+              {activePlan && !selectedSubagent ? (
+                <ClaudePlanCard
+                  explanation={activePlan.explanation}
+                  steps={activePlan.steps}
+                  live={isWorking}
+                />
+              ) : null}
+              {isElectron && selectedSubagent ? (
+                <SubagentDetailView
+                  agent={selectedSubagent}
+                  onBack={() => setSelectedSubagentId(null)}
+                />
+              ) : (
               <MessagesTimeline
                 citationRequest={paintOnlyDisplayedTimeline ? null : citationRequest}
                 citationHistoryLoading={threadDetailLoading}
@@ -9467,9 +9553,10 @@ export default function ChatView(props: ChatViewProps) {
                 onSteerQueuedMessage={onSteerQueuedMessage}
                 onRemoveQueuedMessage={onRemoveQueuedMessage}
               />
+              )}
 
               {/* scroll to end pill — shown when user has scrolled away from the live edge */}
-              {showScrollToBottom && (
+              {showScrollToBottom && !(isElectron && selectedSubagent) && (
                 <div
                   className="pointer-events-none absolute left-1/2 z-30 flex -translate-x-1/2 justify-center py-1.5"
                   style={{ bottom: scrollToEndClearance + 4 }}

@@ -25,6 +25,7 @@ import { Bot, Braces, Check, ChevronDown, ChevronRight, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import { cn } from "~/lib/utils";
+import { isElectron } from "~/env";
 import { orchestrationEnvironment } from "~/state/orchestration";
 import { ScrollArea } from "~/components/ui/scroll-area";
 import { Button } from "~/components/ui/button";
@@ -117,6 +118,21 @@ function AgentElapsed({ agent }: { agent: RuntimeSubagent }) {
  * settled rows lead with the outcome. Errors are the only inline previews on
  * failed rows because they explain a red row at a glance.
  */
+function cleanActivityText(value: string): string {
+  return (
+    value
+      // "## Job: task-..." provider narration arrives as markdown; the row
+      // is plain text, so strip heading markers, bold, inline code, and
+      // quotes instead of rendering raw markdown artifacts.
+      .replace(/^#{1,6}\s+/gm, "")
+      .replace(/\*\*(.+?)\*\*/g, "$1")
+      .replace(/`(.+?)`/g, "$1")
+      .replace(/^>\s?/gm, "")
+      .replace(/\s+/g, " ")
+      .trim()
+  );
+}
+
 function agentActivityText(agent: RuntimeSubagent): string | null {
   const live =
     agent.status === "running" || agent.status === "pending" || agent.status === "waiting";
@@ -136,12 +152,23 @@ function agentActivityText(agent: RuntimeSubagent): string | null {
   );
 }
 
-/** Flat, non-interactive agent status line. No unfold. */
-function AgentRow({ agent }: { agent: RuntimeSubagent }) {
+/** Flat agent status line. Desktop-only: a selectable button that swaps the
+ * main view to the selected sub-agent (Claude-style). Web/mobile stay
+ * non-interactive. */
+function AgentRow({
+  agent,
+  selected = false,
+  onSelect,
+}: {
+  agent: RuntimeSubagent;
+  selected?: boolean | undefined;
+  onSelect?: (((agentId: string | null) => void) | null) | undefined;
+}) {
   const visuals = STATUS_VISUALS[agent.status];
   const statusLabel =
     agent.kind === "subagent_batch" && agent.status === "idle" ? "Idle" : visuals.label;
-  const activity = agentActivityText(agent);
+  const rawActivity = agentActivityText(agent);
+  const activity = rawActivity ? cleanActivityText(rawActivity) || rawActivity : null;
   const modelLabel = formatSubagentModelLabel(agent.model, agent.effort);
   const role =
     agent.role?.trim().toLocaleLowerCase() === agent.title.trim().toLocaleLowerCase()
@@ -154,15 +181,30 @@ function AgentRow({ agent }: { agent: RuntimeSubagent }) {
     agent.activationCount > 1 ? `run ${agent.activationCount}` : null,
   ].filter((value): value is string => value !== null);
 
-  return (
-    <div className="grid h-[3.875rem] grid-cols-[0.375rem_minmax(0,1fr)_auto] grid-rows-[1.25rem_1.125rem_1rem] items-center gap-x-2 rounded-md px-1.5 py-1">
+  const selectable = isElectron && onSelect !== undefined && onSelect !== null;
+  const failed = agent.status === "failed";
+  const rowClass = cn(
+    "grid h-[3.875rem] grid-cols-[0.375rem_minmax(0,1fr)_auto] grid-rows-[1.25rem_1.125rem_1rem] items-center gap-x-2 rounded-md px-1.5 py-1",
+    selectable && "w-full cursor-pointer text-left transition-colors duration-150 hover:bg-accent/40",
+    selectable && selected && "bg-accent/60 ring-1 ring-border",
+    !selectable && "hover:bg-accent/20",
+    failed && "bg-destructive/[0.04]",
+  );
+  const content = (
+  const content = (
+    <>
       <span className="col-start-1 row-start-1 flex items-center">
         <StatusDot status={agent.status} />
       </span>
       <span className="col-start-2 row-start-1 flex min-w-0 items-baseline gap-2">
-        <span className="min-w-0 truncate text-sm font-medium">{agent.title}</span>
+        <span className="min-w-0 truncate text-sm font-medium" title={agent.title}>
+          {agent.title}
+        </span>
         {role ? (
-          <span className="max-w-28 shrink-0 truncate rounded-sm border border-border/60 px-1 font-mono text-[.65rem] text-muted-foreground">
+          <span
+            title={agent.role ?? undefined}
+            className="max-w-36 shrink-0 truncate rounded-sm border border-border/60 px-1 font-mono text-[.65rem] text-muted-foreground"
+          >
             {role}
           </span>
         ) : null}
@@ -172,13 +214,16 @@ function AgentRow({ agent }: { agent: RuntimeSubagent }) {
           <AgentElapsed agent={agent} />
           {agent.status === "completed" ? (
             <Check aria-hidden className="size-3 text-success" />
+          ) : failed ? (
+            <X aria-hidden className="size-3 text-destructive" />
           ) : null}
         </span>
       </span>
       <span
+        title={activity ?? undefined}
         className={cn(
           "col-start-2 col-end-4 row-start-2 block truncate text-xs",
-          agent.status === "failed" ? "text-destructive-foreground" : "text-muted-foreground",
+          failed ? "text-destructive-foreground" : "text-muted-foreground",
         )}
       >
         {activity ?? statusLabel}
@@ -187,7 +232,22 @@ function AgentRow({ agent }: { agent: RuntimeSubagent }) {
         {metadata.join(" · ")}
       </span>
       <span className="sr-only">{statusLabel}</span>
-    </div>
+    </>
+  );
+
+  if (!selectable) {
+    return <div className={rowClass}>{content}</div>;
+  }
+  return (
+    <button
+      type="button"
+      onClick={() => onSelect?.(selected ? null : agent.id)}
+      aria-pressed={selected}
+      aria-label={`${agent.title}, ${statusLabel}. ${selected ? "Selected. Activate to go back." : "Show in main view."}`}
+      className={rowClass}
+    >
+      {content}
+    </button>
   );
 }
 
@@ -318,9 +378,13 @@ function WorkflowScriptView({
 function PhaseSection({
   phase,
   defaultOpen = false,
+  selectedAgentId = null,
+  onSelectAgent,
 }: {
   phase: AgentPanelWorkflowGroup["phases"][number];
-  defaultOpen?: boolean;
+  defaultOpen?: boolean | undefined;
+  selectedAgentId?: (string | null) | undefined;
+  onSelectAgent?: (((agentId: string | null) => void) | null) | undefined;
 }) {
   const [open, setOpen] = useState(defaultOpen || phase.state === "running");
   const previousState = useRef(phase.state);
@@ -369,7 +433,16 @@ function PhaseSection({
           </span>
         ) : null}
       </button>
-      {open ? phase.members.map((member) => <AgentRow key={member.id} agent={member} />) : null}
+      {open
+        ? phase.members.map((member) => (
+            <AgentRow
+              key={member.id}
+              agent={member}
+              selected={selectedAgentId === member.id}
+              onSelect={onSelectAgent}
+            />
+          ))
+        : null}
     </div>
   );
 }
@@ -380,11 +453,15 @@ function ExpandedWorkflowSection({
   environmentId,
   threadId,
   onCollapse,
+  selectedAgentId = null,
+  onSelectAgent,
 }: {
   group: AgentPanelWorkflowGroup;
   environmentId: EnvironmentId | null;
   threadId: ThreadId | null;
   onCollapse: () => void;
+  selectedAgentId?: (string | null) | undefined;
+  onSelectAgent?: (((agentId: string | null) => void) | null) | undefined;
 }) {
   const [scriptOpen, setScriptOpen] = useState(false);
   const members = workflowMembers(group);
@@ -439,13 +516,28 @@ function ExpandedWorkflowSection({
         />
       ) : null}
       {group.phases.map((phase) => (
-        <PhaseSection key={phase.index} phase={phase} defaultOpen={!workflowIsLive(group)} />
+        <PhaseSection
+          key={phase.index}
+          phase={phase}
+          defaultOpen={!workflowIsLive(group)}
+          selectedAgentId={selectedAgentId}
+          onSelectAgent={onSelectAgent}
+        />
       ))}
       {group.unphasedMembers.map((member) => (
-        <AgentRow key={member.id} agent={member} />
+        <AgentRow
+          key={member.id}
+          agent={member}
+          selected={selectedAgentId === member.id}
+          onSelect={onSelectAgent}
+        />
       ))}
       {group.phases.length === 0 && group.unphasedMembers.length === 0 ? (
-        <AgentRow agent={group.workflow} />
+        <AgentRow
+          agent={group.workflow}
+          selected={selectedAgentId === group.workflow.id}
+          onSelect={onSelectAgent}
+        />
       ) : null}
     </section>
   );
@@ -503,10 +595,14 @@ function WorkflowSection({
   group,
   environmentId,
   threadId,
+  selectedAgentId = null,
+  onSelectAgent,
 }: {
   group: AgentPanelWorkflowGroup;
   environmentId: EnvironmentId | null;
   threadId: ThreadId | null;
+  selectedAgentId?: (string | null) | undefined;
+  onSelectAgent?: (((agentId: string | null) => void) | null) | undefined;
 }) {
   const [open, setOpen] = useState(() => workflowIsLive(group));
   return open ? (
@@ -515,6 +611,8 @@ function WorkflowSection({
       environmentId={environmentId}
       threadId={threadId}
       onCollapse={() => setOpen(false)}
+      selectedAgentId={selectedAgentId}
+      onSelectAgent={onSelectAgent}
     />
   ) : (
     <CollapsedWorkflowSection group={group} onExpand={() => setOpen(true)} />
@@ -525,11 +623,16 @@ export function AgentsPanel({
   model,
   environmentId = null,
   threadId = null,
+  selectedAgentId = null,
+  onSelectAgent,
 }: {
   model: AgentPanelModel;
-  environmentId?: EnvironmentId | null;
-  threadId?: ThreadId | null;
+  environmentId?: (EnvironmentId | null) | undefined;
+  threadId?: (ThreadId | null) | undefined;
+  selectedAgentId?: (string | null) | undefined;
+  onSelectAgent?: (((agentId: string | null) => void) | null) | undefined;
 }) {
+  const liveCount = model.runningCount + model.waitingCount;
   if (!model.hasAgents) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-2 p-6 text-center">
@@ -545,6 +648,19 @@ export function AgentsPanel({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
+      {liveCount > 0 ? (
+        <div
+          role="status"
+          aria-atomic="true"
+          className="mx-2 mt-2 flex items-center gap-2 rounded-md border border-info/30 bg-info/10 px-2 py-1.5 text-xs text-info-foreground"
+        >
+          <span aria-hidden className="size-1.5 animate-pulse rounded-full bg-info" />
+          <span className="font-medium tabular-nums">
+            {liveCount} working · Σ {formatSubagentTokenCount(model.totalTokens)} tok
+          </span>
+          <span className="truncate text-muted-foreground">Live fleet — rows update in place</span>
+        </div>
+      ) : null}
       <ScrollArea className="min-h-0 flex-1">
         <div className="flex flex-col gap-2 p-2">
           {model.workflows.map((group) => (
@@ -553,6 +669,8 @@ export function AgentsPanel({
               group={group}
               environmentId={environmentId}
               threadId={threadId}
+              selectedAgentId={selectedAgentId}
+              onSelectAgent={onSelectAgent}
             />
           ))}
           {model.directAgents.length > 0 ? (
@@ -561,7 +679,12 @@ export function AgentsPanel({
                 Direct spawns
               </div>
               {model.directAgents.map((agent) => (
-                <AgentRow key={agent.id} agent={agent} />
+                <AgentRow
+                  key={agent.id}
+                  agent={agent}
+                  selected={selectedAgentId === agent.id}
+                  onSelect={onSelectAgent}
+                />
               ))}
             </section>
           ) : null}
