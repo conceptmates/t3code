@@ -220,6 +220,8 @@ import { WizardPopup } from "./ui/wizard";
 import {
   deriveAgentPanelModel,
   foldSubagentActivities,
+  liveSubagentIds,
+  singleStoppableSubagentId,
 } from "@t3tools/client-runtime/state/subagentRuntime";
 import { BranchToolbar, type BranchToolbarHandle } from "./BranchToolbar";
 import { resolveShortcutCommand, shortcutLabelForCommand } from "../keybindings";
@@ -6218,27 +6220,7 @@ export default function ChatView(props: ChatViewProps) {
       // Desktop-only: a single live agent swaps straight into the main view
       // (Claude-style). Multiple agents leave the choice to the Agents list.
       if (!isElectron) return;
-      const live: string[] = [];
-      for (const agent of agentPanelModel.directAgents) {
-        if (agent.status === "pending" || agent.status === "running" || agent.status === "waiting") {
-          live.push(agent.id);
-        }
-      }
-      for (const group of agentPanelModel.workflows) {
-        const members = [
-          ...group.phases.flatMap((phase) => phase.members),
-          ...group.unphasedMembers,
-        ];
-        for (const member of members) {
-          if (
-            member.status === "pending" ||
-            member.status === "running" ||
-            member.status === "waiting"
-          ) {
-            live.push(member.id);
-          }
-        }
-      }
+      const live = liveSubagentIds(agentPanelModel);
       if (live.length === 1 && live[0]) setSelectedSubagentId(live[0]);
     };
     return {
@@ -6276,12 +6258,22 @@ export default function ChatView(props: ChatViewProps) {
     activeBackgroundLiveness,
     activeThread,
     addAgentsSurface,
-    agentPanelModel.directAgents,
+    agentPanelModel,
     agentPanelModel.liveCount,
-    agentPanelModel.workflows,
     handleStopBackgroundWork,
     isStoppingBackgroundWork,
   ]);
+  // Per-row Stop target: the single live background agent when no turn is
+  // active. Provider interrupts are session-scoped, so this stays null
+  // whenever stopping could over-reach (active turn or 2+ live agents) —
+  // those cases keep the banner's stop-everything interrupt only.
+  const singleStoppableAgentId = useMemo(
+    () => singleStoppableSubagentId(agentPanelModel, activeRunningTurnId !== null),
+    [activeRunningTurnId, agentPanelModel],
+  );
+  const handleStopSingleAgent = useCallback(() => {
+    void handleStopBackgroundWork();
+  }, [handleStopBackgroundWork]);
   // A woken thread announces itself in the open view, not just the sidebar
   // pill. Dismissing marks the wake as seen (same acknowledgment as the
   // pill); sending a message clears it as a side effect of the send path.
@@ -9274,6 +9266,9 @@ export default function ChatView(props: ChatViewProps) {
         threadId={activeThreadRef?.threadId ?? null}
         selectedAgentId={isElectron ? selectedSubagentId : null}
         onSelectAgent={isElectron ? setSelectedSubagentId : undefined}
+        stoppableAgentId={singleStoppableAgentId}
+        stopping={isStoppingBackgroundWork}
+        onStopAgent={handleStopSingleAgent}
       />
     ) : renderedRightPanelSurface?.kind === "device" ? (
       <Suspense fallback={null}>
@@ -9473,6 +9468,9 @@ export default function ChatView(props: ChatViewProps) {
                 <SubagentDetailView
                   agent={selectedSubagent}
                   onBack={() => setSelectedSubagentId(null)}
+                  canStop={singleStoppableAgentId === selectedSubagent.id}
+                  stopping={isStoppingBackgroundWork}
+                  onStop={handleStopSingleAgent}
                 />
               ) : (
               <MessagesTimeline

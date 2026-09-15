@@ -154,15 +154,23 @@ function agentActivityText(agent: RuntimeSubagent): string | null {
 
 /** Flat agent status line. Desktop-only: a selectable button that swaps the
  * main view to the selected sub-agent (Claude-style). Web/mobile stay
- * non-interactive. */
+ * non-interactive. A row-level Stop appears only for the single stoppable
+ * agent (see singleStoppableSubagentId): provider interrupts are
+ * session-scoped, so per-row stop must never over-reach sibling agents. */
 function AgentRow({
   agent,
   selected = false,
   onSelect,
+  stoppable = false,
+  stopping = false,
+  onStop,
 }: {
   agent: RuntimeSubagent;
   selected?: boolean | undefined;
   onSelect?: (((agentId: string | null) => void) | null) | undefined;
+  stoppable?: boolean | undefined;
+  stopping?: boolean | undefined;
+  onStop?: ((agentId: string) => void) | undefined;
 }) {
   const visuals = STATUS_VISUALS[agent.status];
   const statusLabel =
@@ -183,6 +191,8 @@ function AgentRow({
 
   const selectable = isElectron && onSelect !== undefined && onSelect !== null;
   const failed = agent.status === "failed";
+  const showStop = stoppable && onStop !== undefined;
+  const selectLabel = `${agent.title}, ${statusLabel}. ${selected ? "Selected. Activate to go back." : "Show in main view."}`;
   const rowClass = cn(
     "grid h-[3.875rem] grid-cols-[0.375rem_minmax(0,1fr)_auto] grid-rows-[1.25rem_1.125rem_1rem] items-center gap-x-2 rounded-md px-1.5 py-1",
     selectable && "w-full cursor-pointer text-left transition-colors duration-150 hover:bg-accent/40",
@@ -190,7 +200,23 @@ function AgentRow({
     !selectable && "hover:bg-accent/20",
     failed && "bg-destructive/[0.04]",
   );
-  const content = (
+  const stopControl = showStop ? (
+    <Button
+      type="button"
+      size="icon-micro"
+      variant="ghost-muted"
+      disabled={stopping}
+      onClick={(event) => {
+        event.stopPropagation();
+        onStop(agent.id);
+      }}
+      aria-label={stopping ? `Stopping ${agent.title}` : `Stop ${agent.title}`}
+      title={stopping ? "Stopping…" : "Stop this agent"}
+      className="relative z-10 shrink-0 pointer-events-auto"
+    >
+      <X aria-hidden className="size-3" />
+    </Button>
+  ) : null;
   const content = (
     <>
       <span className="col-start-1 row-start-1 flex items-center">
@@ -209,7 +235,14 @@ function AgentRow({
           </span>
         ) : null}
       </span>
-      <span className="col-start-3 row-start-1 min-w-14 text-right font-mono text-[.7rem] text-muted-foreground/80">
+      <span
+        className={cn(
+          "col-start-3 row-start-1 min-w-14 text-right font-mono text-[.7rem] text-muted-foreground/80",
+          // Stretched-link row: inert text lets clicks fall through to the
+          // select overlay; only Stop re-enables pointer events.
+          selectable && showStop && "pointer-events-none relative z-10",
+        )}
+      >
         <span className="inline-flex items-center gap-1">
           <AgentElapsed agent={agent} />
           {agent.status === "completed" ? (
@@ -217,6 +250,7 @@ function AgentRow({
           ) : failed ? (
             <X aria-hidden className="size-3 text-destructive" />
           ) : null}
+          {showStop ? stopControl : null}
         </span>
       </span>
       <span
@@ -238,12 +272,32 @@ function AgentRow({
   if (!selectable) {
     return <div className={rowClass}>{content}</div>;
   }
+  if (showStop) {
+    // Stretched-link row: the select target is an overlay so the Stop button
+    // stays a sibling control (no nested buttons). Content spans are inert
+    // text under the overlay; Stop sits above it.
+    return (
+      <div className={cn(rowClass, "relative")}>
+        <button
+          type="button"
+          onClick={() => onSelect?.(selected ? null : agent.id)}
+          aria-pressed={selected}
+          aria-label={selectLabel}
+          className={cn(
+            "absolute inset-0 cursor-pointer rounded-md transition-colors duration-150 hover:bg-accent/40 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
+            selected && "bg-accent/60 ring-1 ring-border",
+          )}
+        />
+        {content}
+      </div>
+    );
+  }
   return (
     <button
       type="button"
       onClick={() => onSelect?.(selected ? null : agent.id)}
       aria-pressed={selected}
-      aria-label={`${agent.title}, ${statusLabel}. ${selected ? "Selected. Activate to go back." : "Show in main view."}`}
+      aria-label={selectLabel}
       className={rowClass}
     >
       {content}
@@ -380,11 +434,17 @@ function PhaseSection({
   defaultOpen = false,
   selectedAgentId = null,
   onSelectAgent,
+  stoppableAgentId = null,
+  stopping = false,
+  onStopAgent,
 }: {
   phase: AgentPanelWorkflowGroup["phases"][number];
   defaultOpen?: boolean | undefined;
   selectedAgentId?: (string | null) | undefined;
   onSelectAgent?: (((agentId: string | null) => void) | null) | undefined;
+  stoppableAgentId?: (string | null) | undefined;
+  stopping?: boolean | undefined;
+  onStopAgent?: ((agentId: string) => void) | undefined;
 }) {
   const [open, setOpen] = useState(defaultOpen || phase.state === "running");
   const previousState = useRef(phase.state);
@@ -440,6 +500,9 @@ function PhaseSection({
               agent={member}
               selected={selectedAgentId === member.id}
               onSelect={onSelectAgent}
+              stoppable={stoppableAgentId === member.id}
+              stopping={stopping}
+              onStop={onStopAgent}
             />
           ))
         : null}
@@ -455,6 +518,9 @@ function ExpandedWorkflowSection({
   onCollapse,
   selectedAgentId = null,
   onSelectAgent,
+  stoppableAgentId = null,
+  stopping = false,
+  onStopAgent,
 }: {
   group: AgentPanelWorkflowGroup;
   environmentId: EnvironmentId | null;
@@ -462,6 +528,9 @@ function ExpandedWorkflowSection({
   onCollapse: () => void;
   selectedAgentId?: (string | null) | undefined;
   onSelectAgent?: (((agentId: string | null) => void) | null) | undefined;
+  stoppableAgentId?: (string | null) | undefined;
+  stopping?: boolean | undefined;
+  onStopAgent?: ((agentId: string) => void) | undefined;
 }) {
   const [scriptOpen, setScriptOpen] = useState(false);
   const members = workflowMembers(group);
@@ -522,6 +591,9 @@ function ExpandedWorkflowSection({
           defaultOpen={!workflowIsLive(group)}
           selectedAgentId={selectedAgentId}
           onSelectAgent={onSelectAgent}
+          stoppableAgentId={stoppableAgentId}
+          stopping={stopping}
+          onStopAgent={onStopAgent}
         />
       ))}
       {group.unphasedMembers.map((member) => (
@@ -530,6 +602,9 @@ function ExpandedWorkflowSection({
           agent={member}
           selected={selectedAgentId === member.id}
           onSelect={onSelectAgent}
+          stoppable={stoppableAgentId === member.id}
+          stopping={stopping}
+          onStop={onStopAgent}
         />
       ))}
       {group.phases.length === 0 && group.unphasedMembers.length === 0 ? (
@@ -537,6 +612,9 @@ function ExpandedWorkflowSection({
           agent={group.workflow}
           selected={selectedAgentId === group.workflow.id}
           onSelect={onSelectAgent}
+          stoppable={stoppableAgentId === group.workflow.id}
+          stopping={stopping}
+          onStop={onStopAgent}
         />
       ) : null}
     </section>
@@ -597,12 +675,18 @@ function WorkflowSection({
   threadId,
   selectedAgentId = null,
   onSelectAgent,
+  stoppableAgentId = null,
+  stopping = false,
+  onStopAgent,
 }: {
   group: AgentPanelWorkflowGroup;
   environmentId: EnvironmentId | null;
   threadId: ThreadId | null;
   selectedAgentId?: (string | null) | undefined;
   onSelectAgent?: (((agentId: string | null) => void) | null) | undefined;
+  stoppableAgentId?: (string | null) | undefined;
+  stopping?: boolean | undefined;
+  onStopAgent?: ((agentId: string) => void) | undefined;
 }) {
   const [open, setOpen] = useState(() => workflowIsLive(group));
   return open ? (
@@ -613,6 +697,9 @@ function WorkflowSection({
       onCollapse={() => setOpen(false)}
       selectedAgentId={selectedAgentId}
       onSelectAgent={onSelectAgent}
+      stoppableAgentId={stoppableAgentId}
+      stopping={stopping}
+      onStopAgent={onStopAgent}
     />
   ) : (
     <CollapsedWorkflowSection group={group} onExpand={() => setOpen(true)} />
@@ -625,12 +712,18 @@ export function AgentsPanel({
   threadId = null,
   selectedAgentId = null,
   onSelectAgent,
+  stoppableAgentId = null,
+  stopping = false,
+  onStopAgent,
 }: {
   model: AgentPanelModel;
   environmentId?: (EnvironmentId | null) | undefined;
   threadId?: (ThreadId | null) | undefined;
   selectedAgentId?: (string | null) | undefined;
   onSelectAgent?: (((agentId: string | null) => void) | null) | undefined;
+  stoppableAgentId?: (string | null) | undefined;
+  stopping?: boolean | undefined;
+  onStopAgent?: ((agentId: string) => void) | undefined;
 }) {
   const liveCount = model.runningCount + model.waitingCount;
   if (!model.hasAgents) {
@@ -671,6 +764,9 @@ export function AgentsPanel({
               threadId={threadId}
               selectedAgentId={selectedAgentId}
               onSelectAgent={onSelectAgent}
+              stoppableAgentId={stoppableAgentId}
+              stopping={stopping}
+              onStopAgent={onStopAgent}
             />
           ))}
           {model.directAgents.length > 0 ? (
@@ -684,6 +780,9 @@ export function AgentsPanel({
                   agent={agent}
                   selected={selectedAgentId === agent.id}
                   onSelect={onSelectAgent}
+                  stoppable={stoppableAgentId === agent.id}
+                  stopping={stopping}
+                  onStop={onStopAgent}
                 />
               ))}
             </section>
