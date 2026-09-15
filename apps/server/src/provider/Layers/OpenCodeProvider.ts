@@ -32,7 +32,8 @@ const OPENCODE_PRESENTATION = {
   displayName: "OpenCode",
   showInteractionModeToggle: false,
 } as const;
-const OPENCODE_VERSION_PROBE_TIMEOUT = "4 seconds";
+// The OpenCode binary is a large Bun executable; cold starts on loaded machines exceed 4s.
+const OPENCODE_VERSION_PROBE_TIMEOUT = "10 seconds";
 
 class OpenCodeProbeError extends Data.TaggedError("OpenCodeProbeError")<{
   readonly cause?: unknown;

@@ -64,7 +64,11 @@ import * as ProjectSetupScriptRunner from "../project/ProjectSetupScriptRunner.t
 import * as ProviderRegistry from "../provider/Services/ProviderRegistry.ts";
 import { extractBranchNameFromRemoteRef } from "./remoteRefs.ts";
 import * as ServerSettings from "../serverSettings.ts";
-import type { GitManagerServiceError } from "@t3tools/contracts";
+import type {
+  CommitMessageSuggestionInput,
+  CommitMessageSuggestionResult,
+  GitManagerServiceError,
+} from "@t3tools/contracts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import * as SourceControlProviderRegistry from "../sourceControl/SourceControlProviderRegistry.ts";
 import { detectPrTemplate } from "../sourceControl/PrTemplateDetection.ts";
@@ -127,10 +131,16 @@ export class GitManager extends Context.Service<
       input: GitRunStackedActionInput,
       options?: GitRunStackedActionOptions,
     ) => Effect.Effect<GitRunStackedActionResult, GitManagerServiceError>;
+    /** Writes a commit message for what is staged, leaving the index alone. */
+    readonly suggestCommitMessage: (
+      input: CommitMessageSuggestionInput,
+    ) => Effect.Effect<CommitMessageSuggestionResult, GitManagerServiceError>;
   }
 >()("t3/git/GitManager") {}
 
 const COMMIT_TIMEOUT_MS = 10 * 60_000;
+/** Keeps the suggestion prompt's patch bounded, like the stacked-action path. */
+const SUGGESTION_PATCH_MAX_OUTPUT_BYTES = 49_000;
 const MAX_PROGRESS_TEXT_LENGTH = 500;
 const SHORT_SHA_LENGTH = 7;
 const TOAST_DESCRIPTION_MAX = 72;
@@ -699,6 +709,39 @@ export const make = Effect.gen(function* () {
     ).pipe(Effect.orElseSucceed(() => Option.none<ProjectId>()));
     return resolveProjectSettings(settings, Option.getOrNull(projectId)).settings;
   });
+  /** The model and writing style the source-control writer should use. */
+  const textGenerationSettingsFor = (
+    input: { readonly cwd: string; readonly threadId?: ThreadId | undefined },
+    operation: string,
+  ) =>
+    projectSettingsFor(input).pipe(
+      Effect.flatMap((settings) =>
+        settings.sourceControlWriterModelSelection === null
+          ? Effect.succeed({
+              modelSelection: settings.textGenerationModelSelection,
+              style: settings.sourceControlWritingStyle,
+            })
+          : providerRegistry.getProviders.pipe(
+              Effect.map((providers) => ({
+                modelSelection: ServerSettings.resolveSourceControlWriterModelSelection(
+                  settings,
+                  providers,
+                ),
+                style: settings.sourceControlWritingStyle,
+              })),
+            ),
+      ),
+      Effect.mapError(
+        (cause) =>
+          new GitManagerError({
+            operation,
+            cwd: input.cwd,
+            detail: "Failed to get server settings.",
+            cause,
+          }),
+      ),
+    );
+
   const readRepositoryInstructions = (cwd: string, fileName: string) =>
     Effect.gen(function* () {
       const root = yield* fileSystem.realPath(cwd);
@@ -2661,33 +2704,7 @@ export const make = Effect.gen(function* () {
         let commitMessageForStep = input.commitMessage;
         let preResolvedCommitSuggestion: CommitAndBranchSuggestion | undefined = undefined;
 
-        const textGenerationSettings = yield* projectSettingsFor(input).pipe(
-          Effect.flatMap((settings) =>
-            settings.sourceControlWriterModelSelection === null
-              ? Effect.succeed({
-                  modelSelection: settings.textGenerationModelSelection,
-                  style: settings.sourceControlWritingStyle,
-                })
-              : providerRegistry.getProviders.pipe(
-                  Effect.map((providers) => ({
-                    modelSelection: ServerSettings.resolveSourceControlWriterModelSelection(
-                      settings,
-                      providers,
-                    ),
-                    style: settings.sourceControlWritingStyle,
-                  })),
-                ),
-          ),
-          Effect.mapError(
-            (cause) =>
-              new GitManagerError({
-                operation: "runStackedAction",
-                cwd: input.cwd,
-                detail: "Failed to get server settings.",
-                cause,
-              }),
-          ),
-        );
+        const textGenerationSettings = yield* textGenerationSettingsFor(input, "runStackedAction");
 
         if (input.featureBranch) {
           yield* Ref.set(currentPhase, Option.some("branch"));
@@ -2803,6 +2820,75 @@ export const make = Effect.gen(function* () {
     },
   );
 
+  /**
+   * Reads what the user is about to commit without touching the index. The
+   * stacked-action path uses `prepareCommitContext`, which stages everything
+   * first; the Source Control panel must leave the user's staging alone.
+   */
+  const readSuggestionContext = Effect.fn("GitManager.readSuggestionContext")(function* (
+    cwd: string,
+  ) {
+    const operation = "GitManager.suggestCommitMessage";
+    const staged = yield* gitCore.execute({
+      operation,
+      cwd,
+      args: ["diff", "--cached", "--name-status"],
+    });
+    const useIndex = staged.stdout.trim().length > 0;
+
+    const summary = useIndex
+      ? staged.stdout.trim()
+      : (yield* gitCore.execute({ operation, cwd, args: ["diff", "--name-status"] })).stdout.trim();
+    if (summary.length === 0) {
+      return null;
+    }
+
+    const patch = yield* gitCore.execute({
+      operation,
+      cwd,
+      args: ["diff", "--no-ext-diff", ...(useIndex ? ["--cached"] : []), "--patch", "--minimal"],
+      maxOutputBytes: SUGGESTION_PATCH_MAX_OUTPUT_BYTES,
+      appendTruncationMarker: true,
+    });
+
+    return { stagedSummary: summary, stagedPatch: patch.stdout };
+  });
+
+  const suggestCommitMessage: GitManager["Service"]["suggestCommitMessage"] = Effect.fn(
+    "GitManager.suggestCommitMessage",
+  )(function* (input) {
+    const operation = "GitManager.suggestCommitMessage";
+    const context = yield* readSuggestionContext(input.cwd);
+    if (!context) {
+      return yield* new GitManagerError({
+        operation,
+        cwd: input.cwd,
+        detail: "There are no changes to describe.",
+      });
+    }
+
+    const settings = yield* textGenerationSettingsFor(input, operation);
+    const status = yield* gitCore.statusDetails(input.cwd);
+    const policy = yield* resolveStylePolicy(input.cwd, settings);
+
+    const generated = yield* textGeneration
+      .generateCommitMessage({
+        cwd: input.cwd,
+        branch: status.branch,
+        stagedSummary: limitContext(context.stagedSummary, 8_000),
+        stagedPatch: limitContext(context.stagedPatch, 50_000),
+        ...(policy ? { policy } : {}),
+        modelSelection: settings.modelSelection,
+      })
+      .pipe(Effect.map((result) => sanitizeCommitMessage(result)));
+
+    return {
+      subject: generated.subject,
+      body: generated.body,
+      message: formatCommitMessage(generated.subject, generated.body),
+    };
+  });
+
   return GitManager.of({
     localStatus,
     remoteStatus,
@@ -2814,6 +2900,7 @@ export const make = Effect.gen(function* () {
     resolvePullRequest,
     preparePullRequestThread,
     runStackedAction,
+    suggestCommitMessage,
   });
 });
 

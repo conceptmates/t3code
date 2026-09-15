@@ -44,6 +44,33 @@ describe("projectActivityPayload", () => {
     expect(data.somethingClientNeverReads).toBeUndefined();
   });
 
+  it("keeps the skill name of Claude and OpenCode skill tool calls without their input", () => {
+    const claude = projectActivityPayload(
+      activity({
+        itemType: "dynamic_tool_call",
+        data: { toolName: "Skill", input: { skill: "grill-me", args: "private notes" } },
+      }),
+    );
+    const openCode = projectActivityPayload(
+      activity({
+        itemType: "dynamic_tool_call",
+        data: { tool: "skill", state: { status: "completed", input: { name: "simplify" } } },
+      }),
+    );
+    const other = projectActivityPayload(
+      activity({
+        itemType: "dynamic_tool_call",
+        data: { toolName: "WebSearch", input: { skill: "not-a-skill" } },
+      }),
+    );
+    const dataOf = (projected: OrchestrationThreadActivity) =>
+      (projected.payload as Record<string, unknown>).data as Record<string, unknown>;
+    expect(dataOf(claude).skill).toBe("grill-me");
+    expect(dataOf(claude).input).toBeUndefined();
+    expect(dataOf(openCode).skill).toBe("simplify");
+    expect(dataOf(other).skill).toBeUndefined();
+  });
+
   it("keeps a bounded Codex command output summary", () => {
     const projected = projectActivityPayload(
       activity({

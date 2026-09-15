@@ -2,6 +2,7 @@ import { assert, describe, it } from "vite-plus/test";
 
 import {
   hasSpecificPierreIconForFileName,
+  materialFolderColorsForPath,
   resolvePierreIconForEntry,
   syntheticFileNameForLanguageId,
   T3_PIERRE_ICONS,
@@ -38,7 +39,9 @@ describe("Pierre file icons", () => {
 
   it("ships every custom icon referenced by the extended resolver", () => {
     const customIconNames = new Set(
-      Object.values(T3_PIERRE_ICONS.byFileName).filter((name) => name.startsWith("t3-")),
+      Object.values(T3_PIERRE_ICONS.byFileName)
+        .map((entry) => (typeof entry === "string" ? entry : entry.name))
+        .filter((name) => name.startsWith("t3-")),
     );
     for (const iconName of customIconNames) {
       assert.include(T3_PIERRE_ICONS.spriteSheet, `id="${iconName}"`);
@@ -58,5 +61,46 @@ describe("Pierre file icons", () => {
     assert.equal(syntheticFileNameForLanguageId("typescript"), "file.ts");
     assert.equal(syntheticFileNameForLanguageId("shellscript"), "file.sh");
     assert.equal(syntheticFileNameForLanguageId("python"), "file.py");
+  });
+});
+
+describe("Material file cover", () => {
+  it("maps dotfiles and tool configs to specific tokens", () => {
+    assert.isTrue(hasSpecificPierreIconForFileName(".gitignore"));
+    assert.isTrue(hasSpecificPierreIconForFileName(".mcp.json"));
+    assert.isTrue(hasSpecificPierreIconForFileName(".env"));
+    assert.isTrue(hasSpecificPierreIconForFileName("Dockerfile"));
+    assert.isTrue(hasSpecificPierreIconForFileName("go.mod"));
+  });
+
+  it("matches substrings for versioned env files and tsconfigs", () => {
+    assert.isTrue(hasSpecificPierreIconForFileName(".env.local"));
+    assert.isTrue(hasSpecificPierreIconForFileName("tsconfig.node.json"));
+    assert.isTrue(hasSpecificPierreIconForFileName("docker-compose.override.yml"));
+  });
+
+  it("carries color tokens on overrides (glyph alone would render gray)", () => {
+    assert.equal(resolvePierreIconForEntry(".env", "file")?.token, "database");
+    assert.equal(resolvePierreIconForEntry(".env.local", "file")?.token, "database");
+    assert.equal(resolvePierreIconForEntry("go.mod", "file")?.token, "go");
+  });
+});
+
+describe("materialFolderColorsForPath", () => {
+  it("tints well-known folders by basename", () => {
+    assert.equal(materialFolderColorsForPath("node_modules")[0], "#199f43");
+    assert.equal(materialFolderColorsForPath("src")[0], "#1a85d4");
+    assert.equal(materialFolderColorsForPath("patches")[0], "#d52c36");
+  });
+
+  it("matches the last path segment case-insensitively", () => {
+    assert.deepEqual(
+      materialFolderColorsForPath("apps/web/SRC"),
+      materialFolderColorsForPath("src"),
+    );
+  });
+
+  it("falls back to blue for unknown folders", () => {
+    assert.equal(materialFolderColorsForPath("some-random-dir")[0], "#1a85d4");
   });
 });

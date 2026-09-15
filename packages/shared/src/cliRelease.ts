@@ -93,6 +93,30 @@ export function cliReleaseChannelOf(version: string): CliReleaseChannel {
 }
 
 /**
+ * Picks the newest release that actually attaches CLI archives, preferring
+ * stable over nightly and never preview. A version with no archives cannot be
+ * installed by any runtime installer, which is what a self-built app's version
+ * looks like: its release only ever carried desktop installers, or does not
+ * exist at all.
+ */
+export function newestInstallableCliReleaseVersion(
+  releases: ReadonlyArray<{
+    readonly tag_name: string;
+    readonly draft?: boolean | undefined;
+    readonly assets?: ReadonlyArray<{ readonly name: string }> | undefined;
+  }>,
+): string | undefined {
+  const installable = releases.filter((release) =>
+    release.assets?.some((asset) => asset.name === CLI_RELEASE_CHECKSUMS_FILE),
+  );
+  for (const channel of ["stable", "nightly"] as const) {
+    const version = newestCliReleaseVersion(installable, channel);
+    if (version !== undefined) return version;
+  }
+  return undefined;
+}
+
+/**
  * One page of GitHub's list-releases endpoint, newest first. Callers walk pages
  * until a channel match turns up; a busy nightly train can push the newest
  * preview or stable release past any single page.

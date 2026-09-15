@@ -419,6 +419,18 @@ function projectAcpContent(value: unknown): Record<string, unknown> | undefined 
 }
 
 /**
+ * The skill a skill-loading tool call names, so clients can list a thread's
+ * skills without receiving tool input: Claude's `Skill` tool (`input.skill`)
+ * and OpenCode's `skill` tool (`state.input.name`).
+ */
+function projectSkillName(data: Record<string, unknown>): string | null {
+  const toolName = asTrimmedString(data.toolName ?? data.tool)?.toLowerCase();
+  if (toolName !== "skill") return null;
+  const input = asRecord(data.input) ?? asRecord(asRecord(data.state)?.input);
+  return asTrimmedString(input?.skill) ?? asTrimmedString(input?.name);
+}
+
+/**
  * Removes activity payload fields that no current client reads while retaining
  * the full payload in persistence and the event store.
  */
@@ -481,6 +493,10 @@ export function projectActivityPayload(
   }
   if ("toolName" in data) {
     projectedData.toolName = data.toolName;
+  }
+  const skill = projectSkillName(data);
+  if (skill) {
+    projectedData.skill = skill;
   }
 
   const rawOutput =

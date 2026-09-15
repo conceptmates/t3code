@@ -1972,6 +1972,10 @@ export function ConnectionsSettings() {
   const [tailscaleServePortInput, setTailscaleServePortInput] = useState(
     String(DEFAULT_TAILSCALE_SERVE_PORT),
   );
+  const [sshRemoteVersion, setSshRemoteVersion] = useState<string | null>(null);
+  const [sshRemoteVersionInput, setSshRemoteVersionInput] = useState("");
+  const [sshRemoteVersionError, setSshRemoteVersionError] = useState<string | null>(null);
+  const [isUpdatingSshRemoteVersion, setIsUpdatingSshRemoteVersion] = useState(false);
   const [pendingDesktopServerExposureMode, setPendingDesktopServerExposureMode] = useState<
     DesktopServerExposureState["mode"] | null
   >(null);
@@ -2975,6 +2979,85 @@ export function ConnectionsSettings() {
     void applyWslSettingChange(() => desktopBridge.setWslOnly(change.nextValue));
   }, [applyWslSettingChange, desktopBridge, pendingWslChange]);
 
+  const getSshRemoteVersionFromBridge = desktopBridge?.getSshRemoteVersion;
+  useEffect(() => {
+    if (!getSshRemoteVersionFromBridge) return;
+    let cancelled = false;
+    void getSshRemoteVersionFromBridge()
+      .then((version) => {
+        if (cancelled) return;
+        setSshRemoteVersion(version);
+        setSshRemoteVersionInput(version ?? "");
+      })
+      .catch(() => {
+        // The row still works: an empty field means "let the app pick", which
+        // is what a failed read would have shown anyway.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [getSshRemoteVersionFromBridge]);
+
+  const commitSshRemoteVersion = useCallback(async () => {
+    const setVersion = desktopBridge?.setSshRemoteVersion;
+    if (!setVersion) return;
+    const trimmed = sshRemoteVersionInput.trim();
+    if (trimmed === (sshRemoteVersion ?? "")) {
+      setSshRemoteVersionInput(sshRemoteVersion ?? "");
+      return;
+    }
+    setIsUpdatingSshRemoteVersion(true);
+    setSshRemoteVersionError(null);
+    try {
+      const stored = await setVersion(trimmed.length === 0 ? null : trimmed);
+      setSshRemoteVersion(stored);
+      setSshRemoteVersionInput(stored ?? "");
+      if (trimmed.length > 0 && stored === null) {
+        setSshRemoteVersionError("Enter an exact version, such as 0.0.41-nightly.20260914.1707.");
+      }
+    } catch (error) {
+      setSshRemoteVersionError(
+        error instanceof Error ? error.message : "Failed to save the SSH remote version.",
+      );
+    } finally {
+      setIsUpdatingSshRemoteVersion(false);
+    }
+  }, [desktopBridge, sshRemoteVersion, sshRemoteVersionInput]);
+
+  const renderSshRemoteVersionRow = () => {
+    if (!desktopBridge?.setSshRemoteVersion) return null;
+    return (
+      <SettingsRow
+        {...searchableSetting("ssh-remote-version")}
+        description="The T3 Code release that SSH environments install on the remote machine. Leave empty to match this app, or the newest published release when this app's version has none."
+        status={
+          sshRemoteVersionError ? (
+            <span className="block text-destructive">{sshRemoteVersionError}</span>
+          ) : null
+        }
+        control={
+          <Input
+            aria-label="SSH remote version"
+            className="w-64"
+            placeholder="Automatic"
+            value={sshRemoteVersionInput}
+            onChange={(event) => setSshRemoteVersionInput(event.target.value)}
+            onBlur={() => {
+              void commitSshRemoteVersion();
+            }}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                void commitSshRemoteVersion();
+              }
+            }}
+            disabled={isUpdatingSshRemoteVersion}
+          />
+        }
+      />
+    );
+  };
+
   const renderWslRow = () => {
     if (!desktopWslState) {
       // A load failed: keep a recovery row (with retry) visible instead of
@@ -3331,6 +3414,7 @@ export function ConnectionsSettings() {
                 {renderNetworkAccessRow()}
                 {renderEndpointRows("endpoint-rail")}
                 {renderTailscaleRow()}
+                {renderSshRemoteVersionRow()}
                 {renderWslRow()}
                 <CloudLinkRow canManageRelay={canManageRelay} />
               </>

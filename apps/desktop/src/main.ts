@@ -56,6 +56,7 @@ import * as DesktopPreReadyPlatform from "./app/DesktopPreReadyPlatform.ts";
 import * as DesktopShellEnvironment from "./shell/DesktopShellEnvironment.ts";
 import * as DesktopSshEnvironment from "./ssh/DesktopSshEnvironment.ts";
 import * as DesktopSshPasswordPrompts from "./ssh/DesktopSshPasswordPrompts.ts";
+import * as DesktopSshRunnerVersion from "./ssh/DesktopSshRunnerVersion.ts";
 import * as DesktopState from "./app/DesktopState.ts";
 import * as DesktopTelemetryPublisher from "./telemetry/DesktopTelemetryPublisher.ts";
 import * as DesktopUpdates from "./updates/DesktopUpdates.ts";
@@ -90,22 +91,46 @@ const desktopEnvironmentLayer = Layer.unwrap(
 // a source checkout instead so the two sides can be iterated together.
 const resolveDesktopSshCliRunner = (
   environment: DesktopEnvironment.DesktopEnvironment["Service"],
-): RemoteT3RunnerOptions => {
-  const devRemoteEntryPath = Option.getOrUndefined(environment.devRemoteT3ServerEntryPath);
-  if (environment.isDevelopment && devRemoteEntryPath !== undefined) {
+  settings: DesktopAppSettings.DesktopAppSettings["Service"],
+  resolveVersionAutomatically: Effect.Effect<string>,
+): Effect.Effect<RemoteT3RunnerOptions> =>
+  Effect.gen(function* () {
+    const devRemoteEntryPath = Option.getOrUndefined(environment.devRemoteT3ServerEntryPath);
+    if (environment.isDevelopment && devRemoteEntryPath !== undefined) {
+      return {
+        nodeScriptPath: devRemoteEntryPath,
+        nodeEngineRange: serverPackageJson.engines.node,
+      };
+    }
+    // The launch environment outranks the setting, which outranks whatever the
+    // app can find published.
+    const configuredVersion =
+      Option.getOrUndefined(environment.sshRemoteVersion) ?? (yield* settings.get).sshRemoteVersion;
     return {
-      nodeScriptPath: devRemoteEntryPath,
-      nodeEngineRange: serverPackageJson.engines.node,
+      archiveVersion: configuredVersion ?? (yield* resolveVersionAutomatically),
+      releaseBaseUrl: Option.getOrNull(environment.releaseBaseUrl),
     };
-  }
-  return { archiveVersion: environment.appVersion };
-};
+  });
 
 const desktopSshEnvironmentLayer = Layer.unwrap(
   Effect.gen(function* () {
     const environment = yield* DesktopEnvironment.DesktopEnvironment;
+    const settings = yield* DesktopAppSettings.DesktopAppSettings;
+    // The lookup is a network round trip, so it runs on the first SSH launch
+    // rather than at startup, and once per app run. The setting is read per
+    // launch, so changing it takes effect without a restart.
+    const resolveVersionAutomatically = yield* Effect.cached(
+      DesktopSshRunnerVersion.resolveRemoteArchiveVersion({
+        appVersion: environment.appVersion,
+        releaseBaseUrl: Option.getOrNull(environment.releaseBaseUrl),
+      }).pipe(Effect.provide(NodeHttpClient.layerUndici)),
+    );
     return DesktopSshEnvironment.layer({
-      resolveCliRunner: Effect.succeed(resolveDesktopSshCliRunner(environment)),
+      resolveCliRunner: resolveDesktopSshCliRunner(
+        environment,
+        settings,
+        resolveVersionAutomatically,
+      ),
     });
   }),
 );

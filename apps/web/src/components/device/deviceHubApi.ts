@@ -3,9 +3,9 @@ import type { DeviceHubAccess } from "@t3tools/client-runtime/state/deviceHubAcc
 import type { DevicePlatform } from "@t3tools/contracts";
 
 /**
- * Read-only hub endpoints the Tools drawer consumes directly: the accessibility
- * tree, the foreground app, and the event log. Everything that changes device
- * state goes through the `device.action` RPC instead, so this file never POSTs.
+ * Read-only hub endpoints the Device panel consumes directly: screenshots, the
+ * accessibility tree, the foreground app, and the event log. Everything that
+ * changes device state goes through the `device.action` RPC instead.
  */
 
 export interface DeviceAxElement {
@@ -61,6 +61,17 @@ const fetchJson = async (target: Target, url: string, signal?: AbortSignal): Pro
   if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
   return response.json();
 };
+
+/** A full-resolution PNG. The hub captures on POST but changes nothing. */
+export async function fetchDeviceScreenshot(target: Target): Promise<Blob> {
+  const response = await fetch(hubUrl(target, "/api/screenshot", { device: target.deviceId }), {
+    method: "POST",
+    cache: "no-store",
+    credentials: target.access.credentials ? "include" : "same-origin",
+  });
+  if (!response.ok) throw new Error(`Screenshot failed: ${response.status} ${response.statusText}`);
+  return response.blob();
+}
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;

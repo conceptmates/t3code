@@ -1,7 +1,7 @@
 # Devices
 
-The Device panel shows a live iOS Simulator or Android Emulator next to a
-thread, so you can watch an agent verify mobile work and tap the device
+The Device panel shows a live iOS Simulator, Android Emulator, or Android phone
+next to a thread, so you can watch an agent verify mobile work and tap the device
 yourself. Agents get the same device through `device_*` tools and the
 `agent-device` command line, which T3 Code sets up for them.
 
@@ -32,12 +32,39 @@ and Command-line Tools (latest), plus a virtual device created in Android
 Studio's Device Manager. T3 Code detects standard SDK locations; set
 `ANDROID_HOME` for a custom location. The panel explains missing dependencies.
 After installing them, restart the environment server and refresh devices.
+Android phones connected to that machine with USB or wireless debugging, the
+ones `adb devices` lists, appear next to the emulators.
+
+To add a phone over Wi-Fi, choose **Pair phone over Wi-Fi** next to **Refresh
+devices** in the Device panel, or **Pair phone** under **Android wireless
+debugging** in **Settings → Integrations → Devices**. On the phone, open
+**Developer options → Wireless debugging**, then either choose **Pair device
+with QR code** and scan the code T3 Code shows, or choose **Pair device with
+pairing code** and enter its IP address, port, and code. To reconnect a phone
+you paired before, enter the IP address and port from the Wireless debugging
+screen and leave the code empty. The phone must be on the same network as the
+machine the devices run on.
 
 The screen is interactive: click and drag to touch, type while the screen is
-focused, and use the toolbar for Home, Back, and Recents on Android, rotate on
-iOS, and power off. Close the tab to stop watching; the device keeps running
+focused, and paste text into Android with Cmd+V or Ctrl+V. The toolbar has
+Home, Back, Recents, volume, and rotate on Android, rotate on iOS, and power
+off. Hide the toolbar for more room and bring it back from the corner button.
+
+**Take screenshot** and **Record screen** work on every device. The latest
+capture appears in the corner of the panel; open it to preview, or save it.
+Recording needs live video, so it is unavailable on the still-image stream.
+
+On an Android phone, **Turn screen off** darkens the phone while the panel keeps
+showing it. Turn on **Screen off while watching** in Tools to do this whenever
+the phone is showing here. The screen comes back on when you close or hide the
+device. Close the tab to stop watching; the device keeps running
 unless you power it off. Closed tabs stay closed after a reload. To watch the
 device again, choose it from **+ → Device**.
+
+Choosing a device in the corner of the chat, or opening one in the panel, also
+makes it that thread's target: agents started afterwards see `ANDROID_SERIAL`
+and `T3CODE_DEVICE_ID`, so their `adb` commands reach it and a run script can
+use `flutter run -d "$ANDROID_SERIAL"`.
 
 ## Tools
 

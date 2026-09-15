@@ -271,6 +271,7 @@ import {
   renderProviderTraitsPicker,
 } from "./composerProviderState";
 import { ContextWindowMeter, ContextWindowMeterPlaceholder } from "./ContextWindowMeter";
+import { ComposerUsageRow, composerLimitWindows } from "./ComposerUsageRow";
 import {
   providerSupportsManualCompaction,
   resolveContextWindowModelDisplayName,
@@ -1357,6 +1358,8 @@ export interface ChatComposerProps {
 
   // Context window
   activeContextWindow: ContextWindowSnapshot | null;
+  /** Skills this thread mentioned or loaded, for the usage row. */
+  threadSkillNames: readonly string[];
   compactThreadUnavailable: boolean;
   compactDisabled: boolean;
   compactDisabledReason: string | null;
@@ -2030,6 +2033,11 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       ? selectedProviderStatus.reportsContextWindow === true
       : null,
   });
+  const selectedProviderUsageLimits = selectedProviderStatus?.usageLimits;
+  const composerUsageWindows = useMemo(
+    () => composerLimitWindows(selectedProviderUsageLimits),
+    [selectedProviderUsageLimits],
+  );
 
   // ------------------------------------------------------------------
   // Composer-local state
@@ -6861,6 +6869,14 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           </div>
         </ComposerSurface.Main>
       </div>
+      {settings.composerUsageRowEnabled ? (
+        <ComposerUsageRow
+          contextWindow={activeContextWindow}
+          skills={props.threadSkillNames}
+          driver={selectedProviderStatus?.driver ?? null}
+          windows={composerUsageWindows}
+        />
+      ) : null}
     </form>
   );
 });

@@ -107,6 +107,9 @@ export function DeviceToolsPanel(props: {
   readonly access: DeviceHubAccess | null;
   readonly axOverlay: boolean;
   readonly onAxOverlayChange: (enabled: boolean) => void;
+  /** Physical Android only: the panel darkens the phone while it shows here. */
+  readonly autoScreenOff: boolean;
+  readonly onAutoScreenOffChange: (enabled: boolean) => void;
   readonly onClose: () => void;
   readonly className?: string;
 }) {
@@ -232,7 +235,7 @@ export function DeviceToolsPanel(props: {
           />
         </Section>
 
-        <Section title={isIos ? "Simulator" : "Emulator"}>
+        <Section title={isIos ? "Simulator" : device.physical ? "Device" : "Emulator"}>
           <Row label="Appearance">
             <ToggleGroup
               aria-label="Appearance"
@@ -353,6 +356,20 @@ export function DeviceToolsPanel(props: {
             }}
           />
         </Section>
+
+        {!isIos && device.physical ? (
+          <Section title="Screen">
+            <SwitchRow
+              label="Screen off while watching"
+              checked={props.autoScreenOff}
+              disabled={false}
+              onChange={(value) => {
+                props.onAutoScreenOffChange(value);
+                return Promise.resolve();
+              }}
+            />
+          </Section>
+        ) : null}
 
         <LocationSection
           disabled={disabled}

@@ -207,6 +207,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["long lines code blocks tables diffs file previews"],
   },
   {
+    id: "sidebar-project-color-groups",
+    title: "Project color groups",
+    to: "/settings/appearance",
+    searchTerms: ["sidebar tab groups colors projects threads chrome"],
+  },
+  {
     id: "project-grouping",
     title: "Project grouping",
     to: "/settings/general",
@@ -297,6 +303,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     title: "Collapse composer on scroll",
     to: "/settings/general",
     searchTerms: ["composer rest resting scroll wheel conversation timeline shrink minimize"],
+  },
+  {
+    id: "composer-usage-row",
+    title: "Usage under composer",
+    to: "/settings/general",
+    searchTerms: ["context window limits rate 5 hour five session weekly quota progress bar"],
   },
   {
     id: "provider-update-checks",
@@ -509,6 +521,13 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["xcode android studio sdk avd runtime"],
   },
   {
+    id: "android-wireless-debugging",
+    title: "Android wireless debugging",
+    to: "/settings/integrations",
+    targetId: "devices",
+    searchTerms: ["adb pair pairing qr code wifi wireless debugging phone connect"],
+  },
+  {
     id: "browser-profiles",
     title: "Browser profiles",
     to: "/settings/integrations",
@@ -642,6 +661,15 @@ export const SETTINGS_SEARCH_ITEMS = [
     to: "/settings/connections",
     targetId: "connections-environment",
     searchTerms: ["expose backend remote pairing local machine interfaces host restart"],
+    localBackendManagementOnly: true,
+  },
+  {
+    id: "ssh-remote-version",
+    title: "SSH remote version",
+    to: "/settings/connections",
+    targetId: "connections-environment",
+    searchTerms: ["ssh remote release archive install nightly backend version"],
+    desktopOnly: true,
     localBackendManagementOnly: true,
   },
   {

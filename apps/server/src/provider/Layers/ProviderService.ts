@@ -940,18 +940,33 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
     } satisfies Record<string, string>;
   });
 
+  /** The device the thread targets, so an agent's adb and build commands follow the picker. */
+  const deviceTargetEnvironment = (threadId: ThreadId) =>
+    Effect.serviceOption(DeviceService.DeviceService).pipe(
+      Effect.flatMap((devices) =>
+        Option.isNone(devices)
+          ? Effect.succeed<Record<string, string>>({})
+          : devices.value.threadDeviceEnvironment(threadId),
+      ),
+    );
+
   const prepareMcpSession = (threadId: ThreadId, providerInstanceId: ProviderInstanceId) =>
     Effect.gen(function* () {
       const capabilities = yield* agentAccessCapabilities(threadId);
       const credential = yield* issueMcpCredential({ threadId, providerInstanceId, capabilities });
       if (credential) {
         const deviceEnvironment = capabilities.has("device")
-          ? yield* agentDeviceEnvironment
+          ? {
+              ...(yield* agentDeviceEnvironment),
+              ...(yield* deviceTargetEnvironment(threadId)),
+            }
           : undefined;
         yield* Effect.sync(() =>
           McpProviderSession.setMcpProviderSession({
             ...credential.config,
-            ...(deviceEnvironment ? { agentDeviceEnvironment: deviceEnvironment } : {}),
+            ...(deviceEnvironment && Object.keys(deviceEnvironment).length > 0
+              ? { agentDeviceEnvironment: deviceEnvironment }
+              : {}),
           }),
         );
       }

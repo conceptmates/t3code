@@ -69,6 +69,10 @@ export class DesktopEnvironment extends Context.Service<
     readonly appUpdateYmlPath: string;
     readonly devServerUrl: Option.Option<URL>;
     readonly devRemoteT3ServerEntryPath: Option.Option<string>;
+    // SSH remotes install the release archive for appVersion unless this
+    // names another; self-built apps carry a version with no published archive.
+    readonly sshRemoteVersion: Option.Option<string>;
+    readonly releaseBaseUrl: Option.Option<string>;
     readonly configuredBackendPort: Option.Option<number>;
     readonly commitHashOverride: Option.Option<string>;
     readonly otlpTracesUrl: Option.Option<string>;
@@ -224,6 +228,8 @@ const make = Effect.fn("desktop.environment.make")(function* (
       : path.join(input.appPath, "dev-app-update.yml"),
     devServerUrl,
     devRemoteT3ServerEntryPath: config.devRemoteT3ServerEntryPath,
+    sshRemoteVersion: config.sshRemoteVersion,
+    releaseBaseUrl: config.releaseBaseUrl,
     configuredBackendPort: config.configuredBackendPort,
     commitHashOverride: config.commitHashOverride,
     otlpTracesUrl: config.otlpTracesUrl,

@@ -15,11 +15,23 @@ export interface EnvironmentQueryView<A> {
   readonly refresh: () => void;
 }
 
+/** `Cause.pretty` renders an empty defect as "Unknown error", which tells the reader nothing. */
+const UNINFORMATIVE_CAUSE = /^(error:\s*)?unknown error:?$/i;
+
+function describeOpaqueCause(cause: Cause.Cause<unknown>): string | null {
+  const detail = Cause.pretty(cause).split("\n")[0]?.trim().replace(/:$/, "");
+  return detail && !UNINFORMATIVE_CAUSE.test(detail) ? detail : null;
+}
+
 export function formatEnvironmentQueryError(cause: Cause.Cause<unknown>): string {
   const error = Cause.squash(cause);
-  return error instanceof Error && error.message.trim().length > 0
-    ? error.message
-    : "The environment request failed.";
+  if (error instanceof Error && error.message.trim().length > 0) return error.message;
+  // Every declared environment error carries a message, so landing here means the
+  // failure came from outside the RPC's error channel — a transport or decode
+  // fault, most often an environment too old to know the method. Name it, rather
+  // than leaving the reader with a string they cannot act on.
+  const detail = describeOpaqueCause(cause);
+  return detail ? `The environment request failed: ${detail}` : "The environment request failed.";
 }
 
 export function useEnvironmentQuery<A, E>(

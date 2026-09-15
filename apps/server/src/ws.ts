@@ -126,6 +126,8 @@ import { deletePendingAttachment, issueAttachmentUploadUrl } from "./assets/Atta
 import * as PortScanner from "./preview/PortScanner.ts";
 import * as WorkspaceEntries from "./workspace/WorkspaceEntries.ts";
 import * as WorkspaceFileSystem from "./workspace/WorkspaceFileSystem.ts";
+import * as LaunchConfigs from "./launch/LaunchConfigs.ts";
+import * as LaunchSessions from "./launch/LaunchSessions.ts";
 import { readWorkflowScript } from "./orchestration/workflowScriptQuery.ts";
 import * as WorkspacePaths from "./workspace/WorkspacePaths.ts";
 import * as VcsStatusBroadcaster from "./vcs/VcsStatusBroadcaster.ts";
@@ -570,6 +572,8 @@ const makeWsRpcLayer = (
       const startup = yield* ServerRuntimeStartup.ServerRuntimeStartup;
       const workspaceEntries = yield* WorkspaceEntries.WorkspaceEntries;
       const workspaceFileSystem = yield* WorkspaceFileSystem.WorkspaceFileSystem;
+      const launchConfigs = yield* LaunchConfigs.LaunchConfigs;
+      const launchSessions = yield* LaunchSessions.LaunchSessions;
       const canReplayPersistedRange = Effect.fnUntraced(function* (
         afterSequence: number,
         headSequence: number,
@@ -2853,6 +2857,22 @@ const makeWsRpcLayer = (
             ),
             { "rpc.aggregate": "workspace" },
           ),
+        [WS_METHODS.launchListConfigs]: (input) =>
+          observeRpcEffect(WS_METHODS.launchListConfigs, launchConfigs.list(input), {
+            "rpc.aggregate": "workspace",
+          }),
+        [WS_METHODS.launchRun]: (input) =>
+          observeRpcEffect(WS_METHODS.launchRun, launchSessions.run(input), {
+            "rpc.aggregate": "terminal",
+          }),
+        [WS_METHODS.launchStop]: (input) =>
+          observeRpcEffect(WS_METHODS.launchStop, launchSessions.stop(input), {
+            "rpc.aggregate": "terminal",
+          }),
+        [WS_METHODS.launchStarters]: (input) =>
+          observeRpcEffect(WS_METHODS.launchStarters, launchConfigs.starters(input), {
+            "rpc.aggregate": "workspace",
+          }),
         [WS_METHODS.shellOpenInEditor]: (input) =>
           observeRpcEffect(WS_METHODS.shellOpenInEditor, externalLauncher.launchEditor(input), {
             "rpc.aggregate": "workspace",
@@ -3127,6 +3147,45 @@ const makeWsRpcLayer = (
               .pipe(Effect.tap(() => refreshGitStatus(input.cwd))),
             { "rpc.aggregate": "vcs" },
           ),
+        [WS_METHODS.vcsCommitGraph]: (input) =>
+          observeRpcEffect(WS_METHODS.vcsCommitGraph, gitWorkflow.commitGraph(input), {
+            "rpc.aggregate": "vcs",
+          }),
+        [WS_METHODS.vcsCommitFiles]: (input) =>
+          observeRpcEffect(WS_METHODS.vcsCommitFiles, gitWorkflow.commitFiles(input), {
+            "rpc.aggregate": "vcs",
+          }),
+        [WS_METHODS.vcsCommitPatch]: (input) =>
+          observeRpcEffect(WS_METHODS.vcsCommitPatch, gitWorkflow.commitPatch(input), {
+            "rpc.aggregate": "vcs",
+          }),
+        [WS_METHODS.vcsWorkingCopyStatus]: (input) =>
+          observeRpcEffect(WS_METHODS.vcsWorkingCopyStatus, gitWorkflow.workingCopyStatus(input), {
+            "rpc.aggregate": "vcs",
+          }),
+        [WS_METHODS.vcsStage]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.vcsStage,
+            gitWorkflow.stage(input).pipe(Effect.tap(() => refreshGitStatus(input.cwd))),
+            { "rpc.aggregate": "vcs" },
+          ),
+        [WS_METHODS.vcsCommit]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.vcsCommit,
+            gitWorkflow
+              .commitWorkingCopy(input)
+              // Refreshed even on failure: `stageAll` can land before a hook
+              // rejects the commit, and the status push is what every other
+              // surface's git chrome listens to.
+              .pipe(Effect.ensuring(refreshGitStatus(input.cwd))),
+            { "rpc.aggregate": "vcs" },
+          ),
+        [WS_METHODS.vcsSuggestCommitMessage]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.vcsSuggestCommitMessage,
+            gitWorkflow.suggestCommitMessage(input),
+            { "rpc.aggregate": "vcs" },
+          ),
         [WS_METHODS.reviewGetDiffPreview]: (input) =>
           observeRpcEffect(WS_METHODS.reviewGetDiffPreview, review.getDiffPreview(input), {
             "rpc.aggregate": "review",
@@ -3274,6 +3333,10 @@ const makeWsRpcLayer = (
           }),
         [WS_METHODS.deviceAction]: (input) =>
           observeRpcEffect(WS_METHODS.deviceAction, deviceService.action(input), {
+            "rpc.aggregate": "device",
+          }),
+        [WS_METHODS.deviceAdbPair]: (input) =>
+          observeRpcEffect(WS_METHODS.deviceAdbPair, deviceService.adbPair(input), {
             "rpc.aggregate": "device",
           }),
         [WS_METHODS.subscribeDeviceState]: (_input) =>

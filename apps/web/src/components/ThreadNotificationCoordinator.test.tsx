@@ -205,6 +205,28 @@ describe("thread notifications", () => {
     expect(state.add).not.toHaveBeenCalled();
   });
 
+  it("shows system alerts while focused when in-app notifications are disabled", async () => {
+    state.inApp = false;
+    state.mode = "notifications";
+    await render();
+    await complete();
+    expect(state.add).not.toHaveBeenCalled();
+    expect(state.notification).toHaveBeenCalledWith("Thread completed", {
+      body: "Fix the login form",
+      tag: "env-1:thread-1",
+      silent: true,
+    });
+  });
+
+  it("skips system alerts for the thread being viewed while focused", async () => {
+    state.inApp = false;
+    state.mode = "notifications";
+    state.active.threadId = "thread-1";
+    await render();
+    await complete();
+    expect(state.notification).not.toHaveBeenCalled();
+  });
+
   it("does not replay a completion when opting in from all alerts off", async () => {
     state.inApp = false;
     await render();

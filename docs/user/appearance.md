@@ -13,6 +13,13 @@ can be selected separately for light and dark appearances.
 Android also offers **Material You Layout**, which changes shapes and spacing independently
 of the selected theme.
 
+## Project color groups
+
+Turn on **Project color groups** in **Settings → Appearance** to keep each project's pinned and
+active threads together in the sidebar. Every project gets its own color, like a browser tab group.
+A project's group sits where its most recently arranged thread is, so dragging a thread to the top
+also brings the rest of that project's threads with it.
+
 ## Motion
 
 The main sidebar, right panel, and terminal drawer open and close immediately by default. Move the

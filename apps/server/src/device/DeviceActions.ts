@@ -26,7 +26,9 @@ import {
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 
+import { ANDROID_SCREEN_POWER_SCRIPT } from "./androidScreenPower.ts";
 import type { DeviceHostReady } from "./DeviceHost.ts";
+import { DEVICE_HUB_SCRCPY_VERSION } from "./DeviceToolchain.ts";
 
 type Runner = DeviceHostReady["run"];
 
@@ -57,6 +59,7 @@ const ANDROID_ACTIONS: ReadonlySet<DeviceActionType> = new Set([
   "setTextSize",
   "setToggle",
   "setOrientation",
+  "setScreenPower",
   "setLocation",
   "clearLocation",
   "setPermission",
@@ -193,7 +196,7 @@ export const runDeviceAction = Effect.fn("DeviceActions.run")(function* (
     });
   }
   if (platform === "ios") return yield* runIos(ready, input);
-  return yield* runAndroid(ready.run, input);
+  return yield* runAndroid(ready, input);
 });
 
 const simctl = (run: Runner, udid: string, args: ReadonlyArray<string>, operation: string) =>
@@ -343,9 +346,10 @@ const adb = (run: Runner, serial: string, args: ReadonlyArray<string>, operation
   run("adb", ["-s", serial, ...args]).pipe(Effect.flatMap(ok(operation)));
 
 const runAndroid = Effect.fn("DeviceActions.runAndroid")(function* (
-  run: Runner,
+  ready: DeviceHostReady,
   input: DeviceActionInput,
 ) {
+  const { run } = ready;
   const serial = input.deviceId;
   const shell = (args: ReadonlyArray<string>, operation: string) =>
     adb(run, serial, ["shell", ...args], operation);
@@ -402,6 +406,37 @@ const runAndroid = Effect.fn("DeviceActions.runAndroid")(function* (
         ["cmd", "window", "user-rotation", "lock", ANDROID_ROTATION[input.value]],
         "orientation",
       );
+      return;
+    }
+    case "setScreenPower": {
+      // An emulator has no panel to power off.
+      if (serial.startsWith("emulator-")) {
+        return yield* new DeviceActionUnavailableError({
+          operation: input.type,
+          platform: "android",
+          reason: "unsupported",
+        });
+      }
+      const jar = ready.helpers.scrcpyServer;
+      if (!jar) {
+        return yield* new DeviceActionUnavailableError({
+          operation: "screen power",
+          platform: "android",
+          reason: "helper_missing",
+        });
+      }
+      yield* run(
+        ready.nodePath,
+        [
+          "-e",
+          ANDROID_SCREEN_POWER_SCRIPT,
+          serial,
+          input.value ? "on" : "off",
+          jar,
+          DEVICE_HUB_SCRCPY_VERSION,
+        ],
+        { timeoutMs: 90_000 },
+      ).pipe(Effect.flatMap(ok("screen power")));
       return;
     }
     case "setLocation":

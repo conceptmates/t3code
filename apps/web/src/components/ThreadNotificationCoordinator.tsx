@@ -144,12 +144,9 @@ function EnvironmentNotifications({
           hasNotificationSound(getClientSettings().notificationMode),
         );
       }
-      if (
-        inAppNotificationsEnabled &&
-        document.visibilityState === "visible" &&
-        document.hasFocus() &&
-        (activeEnvironmentId !== environmentId || activeThreadId !== thread.id)
-      ) {
+      const focused = document.visibilityState === "visible" && document.hasFocus();
+      const viewing = activeEnvironmentId === environmentId && activeThreadId === thread.id;
+      if (inAppNotificationsEnabled && focused && !viewing) {
         const toastId = toastManager.add({
           type: kind === "completion" ? "success" : status === "failed" ? "error" : "warning",
           title,
@@ -170,7 +167,7 @@ function EnvironmentNotifications({
       }
       if (
         !hasDesktopNotifications(mode) ||
-        (document.visibilityState === "visible" && document.hasFocus()) ||
+        (focused && viewing) ||
         typeof Notification === "undefined" ||
         Notification.permission !== "granted"
       )
@@ -181,7 +178,8 @@ function EnvironmentNotifications({
           tag: `${environmentId}:${thread.id}`,
           silent: true,
         });
-        onNotification(environmentId, notification);
+        // A focused window never fires the focus event that clears the badge.
+        if (!focused) onNotification(environmentId, notification);
         notification.addEventListener("click", () => {
           notification.close();
           window.focus();

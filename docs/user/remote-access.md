@@ -137,6 +137,12 @@ Configure your version manager for non-interactive shells if this differs from
 your normal terminal. With nvm, setting a compatible default, such as
 `nvm alias default 24`, can resolve the problem.
 
+The remote downloads the T3 Code release that matches your app's version. A
+desktop app you built yourself has no published release, so the remote runs the
+newest published one instead. To choose the release yourself, set **SSH remote
+version** under **Settings → Connections** to a version from the
+[releases page](https://github.com/pingdotgg/t3code/releases).
+
 If SSH reconnecting fails after an app update, retry the launch once. Removing
 the connection stops a server that T3 Code launched; a server that was already
 running is left alone.

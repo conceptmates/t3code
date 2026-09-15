@@ -189,6 +189,7 @@ import { previewRuntimeTabId } from "../browser/previewRuntimeTabId";
 import { BrowserSettingsReadError } from "../browser/openFileInPreview";
 import { addBrowserSurface } from "./preview/addBrowserSurface";
 import { closePreviewSession } from "./preview/closePreviewSession";
+import { DeviceTargetStatus } from "./device/DeviceTargetStatus";
 import { ThreadPreviewMiniPlayer } from "./preview/ThreadPreviewMiniPlayer";
 import { subscribePreviewAction } from "./preview/previewActionBus";
 import { getConfiguredPreviewUrls } from "./preview/previewEmptyStateLogic";
@@ -209,6 +210,8 @@ import { PullRequestDetailGhost } from "./pullRequest/PullRequestGhosts";
 import { PullRequestsUnavailableState } from "./pullRequest/PullRequestsUnavailableState";
 import { RightPanelTabs } from "./RightPanelTabs";
 import { AgentsPanel } from "./AgentsPanel";
+import { ClaudePlanCard } from "./chat/ClaudePlanCard";
+import { SubagentDetailView } from "./chat/SubagentDetailView";
 import { LinkPullRequestDialogHost } from "./pullRequest/LinkPullRequestDialog";
 import { ThreadPullRequestsPanel } from "./pullRequest/ThreadPullRequestsPanel";
 import { useDeviceState } from "~/state/device";
@@ -218,6 +221,8 @@ import { WizardPopup } from "./ui/wizard";
 import {
   deriveAgentPanelModel,
   foldSubagentActivities,
+  liveSubagentIds,
+  singleStoppableSubagentId,
 } from "@t3tools/client-runtime/state/subagentRuntime";
 import { BranchToolbar, type BranchToolbarHandle } from "./BranchToolbar";
 import { resolveShortcutCommand, shortcutLabelForCommand } from "../keybindings";
@@ -316,6 +321,18 @@ import { useEnvironmentDisconnectDelay } from "../hooks/useEnvironmentDisconnect
 import { selectThreadTerminalUiState, useTerminalUiStateStore } from "../terminalUiStateStore";
 import { useKnownTerminalSessions, useThreadRunningTerminalIds } from "../state/terminalSessions";
 import { useEnvironmentQuery } from "../state/query";
+import { launchEnvironment } from "../state/launch";
+import {
+  launchEntryMissingInputIds,
+  primaryLaunchEntry,
+  selectLaunchSessions,
+  type LaunchSessionView,
+} from "@t3tools/client-runtime/launch-sessions";
+import { LaunchSessionBar } from "./launch/LaunchSessionBar";
+import { LaunchPanel } from "./launch/LaunchPanel";
+import { SourceControlPanel } from "./sourceControl/SourceControlPanel";
+import { LaunchInputsDialog, type LaunchInputsRequest } from "./launch/LaunchInputsDialog";
+import { getLocalStorageItem, setLocalStorageItem } from "../hooks/useLocalStorage";
 import {
   environmentServerConfigsAtom,
   primaryServerAvailableEditorsAtom,
@@ -383,6 +400,7 @@ import {
   shouldOfferResumeCompaction,
 } from "./chat/ContextWindowMeter.logic";
 import { deriveLatestContextWindowSnapshot, formatContextWindowTokens } from "../lib/contextWindow";
+import { deriveThreadSkillNames } from "../lib/threadSkills";
 import {
   DRAFT_HERO_TRANSITION_ANIMATION_ID,
   DRAFT_HERO_TRANSITION_DURATION_MS,
@@ -697,6 +715,17 @@ function formatOutgoingPrompt(params: {
   const promptEffort = resolvePromptInjectedEffort(caps, params.effort);
   return applyClaudePromptEffortPrefix(params.text, promptEffort);
 }
+const EMPTY_LAUNCH_ENTRIES: Parameters<typeof primaryLaunchEntry>[0] = [];
+
+/** Last launch entry run in a workspace, so the Run button repeats it. */
+function readLastLaunchName(storageKey: string): string | null {
+  try {
+    return getLocalStorageItem(storageKey, Schema.String);
+  } catch {
+    return null;
+  }
+}
+
 const SCRIPT_TERMINAL_COLS = 120;
 const SCRIPT_TERMINAL_ROWS = 30;
 
@@ -2872,6 +2901,17 @@ export default function ChatView(props: ChatViewProps) {
     () => deriveLatestContextWindowSnapshot(threadActivities),
     [threadActivities],
   );
+  const threadMessages = activeThread?.messages;
+  // Keyed by the joined names: streaming tool updates rebuild the list, but the
+  // composer only re-renders when a skill is actually added.
+  const threadSkillNamesKey = useMemo(
+    () => deriveThreadSkillNames(threadMessages ?? [], threadActivities).join("\n"),
+    [threadActivities, threadMessages],
+  );
+  const threadSkillNames = useMemo(
+    () => (threadSkillNamesKey === "" ? [] : threadSkillNamesKey.split("\n")),
+    [threadSkillNamesKey],
+  );
   const workLogEntries = useMemo(() => deriveWorkLogEntries(threadActivities), [threadActivities]);
   // Native subagent fold: memoized by activity-list identity, shared by the
   // Agents surface, live strip, and workflow cards. v2Projection is null
@@ -2885,6 +2925,35 @@ export default function ChatView(props: ChatViewProps) {
       }),
     [agentSessionLive, threadActivities],
   );
+  // Desktop-only Claude-style sub-agent selection: UI-only state that swaps
+  // the main column to the selected agent. Web/mobile never set it.
+  const [selectedSubagentId, setSelectedSubagentId] = useState<string | null>(null);
+  useEffect(() => {
+    setSelectedSubagentId(null);
+  }, [activeThreadId]);
+  const selectedSubagent = useMemo(() => {
+    if (!isElectron || !selectedSubagentId) return null;
+    const direct = agentPanelModel.directAgents.find((agent) => agent.id === selectedSubagentId);
+    if (direct) return direct;
+    for (const group of agentPanelModel.workflows) {
+      if (group.workflow.id === selectedSubagentId) return group.workflow;
+      for (const phase of group.phases) {
+        const member = phase.members.find((entry) => entry.id === selectedSubagentId);
+        if (member) return member;
+      }
+      const unphased = group.unphasedMembers.find((entry) => entry.id === selectedSubagentId);
+      if (unphased) return unphased;
+    }
+    return null;
+  }, [agentPanelModel, selectedSubagentId]);
+  useEffect(() => {
+    if (!isElectron || !selectedSubagent) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setSelectedSubagentId(null);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [selectedSubagent]);
   const { approvals: pendingApprovals, userInputs: pendingUserInputs } = useMemo(
     () => derivePendingRequests(threadActivities),
     [threadActivities],
@@ -4246,6 +4315,176 @@ export default function ChatView(props: ChatViewProps) {
     ],
   );
 
+  const launchConfigsQuery = useEnvironmentQuery(
+    activeThreadRef && gitCwd
+      ? launchEnvironment.configs({
+          environmentId: activeThreadRef.environmentId,
+          input: { cwd: gitCwd },
+        })
+      : null,
+  );
+  const launchEntries = useMemo(
+    () =>
+      launchConfigsQuery.data?.launchFile._tag === "valid"
+        ? launchConfigsQuery.data.entries
+        : EMPTY_LAUNCH_ENTRIES,
+    [launchConfigsQuery.data],
+  );
+  const launchStorageKey = gitCwd ? `t3code:launch:last-run:${gitCwd}` : null;
+  const [lastLaunchNameByKey, setLastLaunchNameByKey] = useState<Record<string, string>>({});
+  const lastLaunchName = launchStorageKey
+    ? (lastLaunchNameByKey[launchStorageKey] ?? readLastLaunchName(launchStorageKey))
+    : null;
+  const primaryLaunch = useMemo(
+    () => primaryLaunchEntry(launchEntries, lastLaunchName),
+    [launchEntries, lastLaunchName],
+  );
+  const launchSessions = useMemo(
+    () =>
+      selectLaunchSessions(
+        launchEntries,
+        activeThreadKnownSessionsRaw.flatMap((session) =>
+          session.state.summary ? [session.state.summary] : [],
+        ),
+      ),
+    [activeThreadKnownSessionsRaw, launchEntries],
+  );
+  const runLaunch = useAtomCommand(launchEnvironment.run, "launch run");
+  const stopLaunch = useAtomCommand(launchEnvironment.stop, "launch stop");
+  const [pendingLaunchInputs, setPendingLaunchInputs] = useState<LaunchInputsRequest | null>(null);
+  const runLaunchEntry = useCallback(
+    async (name: string, inputValues?: Record<string, string>) => {
+      if (!activeThreadRef || !gitCwd) return;
+      // Configurations with `${input:…}` ask for values before they run.
+      const entry = launchEntries.find((candidate) => candidate.name === name);
+      const missingInputIds = entry ? launchEntryMissingInputIds(entry) : [];
+      if (inputValues === undefined && missingInputIds.length > 0) {
+        setPendingLaunchInputs({
+          name,
+          prompts: (launchConfigsQuery.data?.inputs ?? []).filter((prompt) =>
+            missingInputIds.includes(prompt.id),
+          ),
+        });
+        return;
+      }
+      if (launchStorageKey) {
+        setLastLaunchNameByKey((current) =>
+          current[launchStorageKey] === name ? current : { ...current, [launchStorageKey]: name },
+        );
+        try {
+          setLocalStorageItem(launchStorageKey, name, Schema.String);
+        } catch {
+          // The in-memory choice still applies for this session.
+        }
+      }
+      const result = await runLaunch({
+        environmentId: activeThreadRef.environmentId,
+        input: {
+          threadId: activeThreadRef.threadId,
+          cwd: gitCwd,
+          worktreePath: activeThread?.worktreePath ?? null,
+          name,
+          ...(inputValues === undefined ? {} : { inputValues }),
+        },
+      });
+      if (result._tag === "Failure") {
+        if (!isAtomCommandInterrupted(result)) {
+          const error = squashAtomCommandFailure(result);
+          setThreadError(
+            activeThreadRef.threadId,
+            error instanceof Error ? error.message : `Failed to run "${name}".`,
+          );
+        }
+        return;
+      }
+      const lastSession = result.value.sessions.at(-1);
+      if (lastSession) {
+        storeEnsureTerminal(activeThreadRef, lastSession.terminalId, { open: true, active: true });
+      }
+    },
+    [
+      activeThread,
+      activeThreadRef,
+      gitCwd,
+      launchConfigsQuery.data,
+      launchEntries,
+      launchStorageKey,
+      runLaunch,
+      setThreadError,
+      storeEnsureTerminal,
+    ],
+  );
+  const stopLaunchSession = useCallback(
+    (session: LaunchSessionView) => {
+      if (!activeThreadRef) return;
+      void stopLaunch({
+        environmentId: activeThreadRef.environmentId,
+        input: { threadId: activeThreadRef.threadId, terminalId: session.terminalId },
+      });
+    },
+    [activeThreadRef, stopLaunch],
+  );
+  const restartLaunchSession = useCallback(
+    (session: LaunchSessionView) => {
+      if (session.entryName) void runLaunchEntry(session.entryName);
+    },
+    [runLaunchEntry],
+  );
+  // Hiding leaves the process running; the bar keeps the session either way.
+  const toggleLaunchTerminal = useCallback(
+    (session: LaunchSessionView, visible: boolean) => {
+      if (!activeThreadRef) return;
+      if (visible) {
+        storeSetTerminalOpen(activeThreadRef, false);
+        return;
+      }
+      storeEnsureTerminal(activeThreadRef, session.terminalId, { open: true, active: true });
+    },
+    [activeThreadRef, storeEnsureTerminal, storeSetTerminalOpen],
+  );
+  const dismissLaunchSession = useCallback(
+    (session: LaunchSessionView) => {
+      if (!activeThreadRef) return;
+      void closeTerminalMutation({
+        environmentId: activeThreadRef.environmentId,
+        input: { threadId: activeThreadRef.threadId, terminalId: session.terminalId },
+      });
+    },
+    [activeThreadRef, closeTerminalMutation],
+  );
+  // Flutter's `flutter run` reads `r` (hot reload) and `R` (hot restart) from stdin.
+  const hotReloadLaunchSession = useCallback(
+    (session: LaunchSessionView, mode: "reload" | "restart") => {
+      if (!activeThreadRef) return;
+      void writeTerminal({
+        environmentId: activeThreadRef.environmentId,
+        input: {
+          threadId: activeThreadRef.threadId,
+          terminalId: session.terminalId,
+          data: mode === "reload" ? "r" : "R",
+        },
+      });
+    },
+    [activeThreadRef, writeTerminal],
+  );
+  const openLaunchJson = useCallback(() => {
+    if (activeThreadRef) {
+      useRightPanelStore.getState().openFile(activeThreadRef, ".vscode/launch.json");
+    }
+  }, [activeThreadRef]);
+  // Drafts the request instead of sending it, so the user decides whether an agent installs anything.
+  const askAgentToInstallToolchain = useCallback(
+    (binary: string) => {
+      const composer = composerRef.current;
+      if (!composer) return;
+      const prompt = `Install \`${binary}\` on this machine so it's on the PATH the T3 Code server uses, then run \`${binary} --version\` to confirm.`;
+      if (composer.insertTextAtEnd(prompt, { ensureLeadingBoundary: true })) {
+        composer.focusAtEnd();
+      }
+    },
+    [composerRef],
+  );
+
   const supportsProjectSettingsOverrides =
     environmentById.get(environmentId)?.serverConfig?.environment.capabilities
       .projectSettingsOverrides === true;
@@ -4497,6 +4736,14 @@ export default function ChatView(props: ChatViewProps) {
   const addAgentsSurface = useCallback(() => {
     if (!activeThreadRef) return;
     useRightPanelStore.getState().open(activeThreadRef, "agents");
+  }, [activeThreadRef]);
+  const addLaunchSurface = useCallback(() => {
+    if (!activeThreadRef) return;
+    useRightPanelStore.getState().open(activeThreadRef, "launch");
+  }, [activeThreadRef]);
+  const addCommitGraphSurface = useCallback(() => {
+    if (!activeThreadRef) return;
+    useRightPanelStore.getState().open(activeThreadRef, "commit-graph");
   }, [activeThreadRef]);
   const supportsThreadPullRequests =
     serverConfig?.environment.capabilities.threadPullRequests === true;
@@ -6166,6 +6413,19 @@ export default function ChatView(props: ChatViewProps) {
     }
     const working = activeBackgroundLiveness === "working";
     const liveCount = agentPanelModel.liveCount;
+    const label = working
+      ? liveCount > 0
+        ? `${liveCount} ${liveCount === 1 ? "agent" : "agents"} working`
+        : "Background work"
+      : "Monitoring";
+    const openAgentsFromBanner = () => {
+      addAgentsSurface();
+      // Desktop-only: a single live agent swaps straight into the main view
+      // (Claude-style). Multiple agents leave the choice to the Agents list.
+      if (!isElectron) return;
+      const live = liveSubagentIds(agentPanelModel);
+      if (live.length === 1 && live[0]) setSelectedSubagentId(live[0]);
+    };
     return {
       id: `background-liveness:${activeThread.id}`,
       variant: "default",
@@ -6176,11 +6436,16 @@ export default function ChatView(props: ChatViewProps) {
           aria-hidden="true"
         />
       ),
-      title: working
-        ? liveCount > 0
-          ? `${liveCount} ${liveCount === 1 ? "agent" : "agents"} working`
-          : "Background work"
-        : "Monitoring",
+      title: (
+        <button
+          type="button"
+          onClick={openAgentsFromBanner}
+          aria-label={`${label}. Show agents.`}
+          className="cursor-pointer truncate text-left transition-colors duration-150 hover:text-foreground"
+        >
+          {label}
+        </button>
+      ),
       actions: (
         <Button
           size="xs"
@@ -6195,10 +6460,23 @@ export default function ChatView(props: ChatViewProps) {
   }, [
     activeBackgroundLiveness,
     activeThread,
+    addAgentsSurface,
+    agentPanelModel,
     agentPanelModel.liveCount,
     handleStopBackgroundWork,
     isStoppingBackgroundWork,
   ]);
+  // Per-row Stop target: the single live background agent when no turn is
+  // active. Provider interrupts are session-scoped, so this stays null
+  // whenever stopping could over-reach (active turn or 2+ live agents) —
+  // those cases keep the banner's stop-everything interrupt only.
+  const singleStoppableAgentId = useMemo(
+    () => singleStoppableSubagentId(agentPanelModel, activeRunningTurnId !== null),
+    [activeRunningTurnId, agentPanelModel],
+  );
+  const handleStopSingleAgent = useCallback(() => {
+    void handleStopBackgroundWork();
+  }, [handleStopBackgroundWork]);
   // A woken thread announces itself in the open view, not just the sidebar
   // pill. Dismissing marks the wake as seen (same acknowledgment as the
   // pill); sending a message clears it as a side effect of the send path.
@@ -6550,6 +6828,7 @@ export default function ChatView(props: ChatViewProps) {
       previewFocus: isPreviewFocused(),
       previewOpen: previewPanelOpen,
       modelPickerOpen: composerRef.current?.isModelPickerOpen() ?? false,
+      desktop: isElectron,
     }),
     [composerRef, previewPanelOpen, terminalUiState.terminalOpen],
   );
@@ -6779,6 +7058,27 @@ export default function ChatView(props: ChatViewProps) {
         return;
       }
 
+      if (command === "launch.run" || command === "launch.restart") {
+        const target =
+          command === "launch.restart"
+            ? (launchSessions.find((session) => session.running)?.entryName ?? primaryLaunch?.name)
+            : primaryLaunch?.name;
+        if (!target) return;
+        event.preventDefault();
+        event.stopPropagation();
+        if (!event.repeat) void runLaunchEntry(target);
+        return;
+      }
+
+      if (command === "launch.stop") {
+        const running = launchSessions.find((session) => session.running);
+        if (!running) return;
+        event.preventDefault();
+        event.stopPropagation();
+        if (!event.repeat) stopLaunchSession(running);
+        return;
+      }
+
       const scriptId = projectScriptIdFromCommand(command);
       if (!scriptId || !activeProject) return;
       const script = activeProjectScripts.find((entry) => entry.id === scriptId);
@@ -6793,6 +7093,10 @@ export default function ChatView(props: ChatViewProps) {
     activeProject,
     activeRightPanelSurface,
     activeProjectScripts,
+    launchSessions,
+    primaryLaunch,
+    runLaunchEntry,
+    stopLaunchSession,
     addTerminalSurface,
     activeThreadRef,
     activeThreadPinned,
@@ -8938,11 +9242,36 @@ export default function ChatView(props: ChatViewProps) {
       />
     ) : renderedRightPanelSurface?.kind === "pull-requests" && activeThreadRef ? (
       <ThreadPullRequestsPanel threadRef={activeThreadRef} />
+    ) : renderedRightPanelSurface?.kind === "launch" && activeThreadRef && gitCwd ? (
+      <LaunchPanel
+        environmentId={activeThreadRef.environmentId}
+        cwd={gitCwd}
+        configs={launchConfigsQuery.data}
+        configsError={launchConfigsQuery.error}
+        sessions={launchSessions}
+        onRefresh={launchConfigsQuery.refresh}
+        onRun={runLaunchEntry}
+        onStop={stopLaunchSession}
+        onOpenLaunchJson={openLaunchJson}
+        onAskAgentToInstall={askAgentToInstallToolchain}
+      />
+    ) : renderedRightPanelSurface?.kind === "commit-graph" && activeThreadRef && gitCwd ? (
+      <SourceControlPanel
+        environmentId={activeThreadRef.environmentId}
+        cwd={gitCwd}
+        threadId={activeThreadRef.threadId}
+        isTurnActive={activeRunningTurnId !== null}
+      />
     ) : renderedRightPanelSurface?.kind === "agents" ? (
       <AgentsPanel
         model={agentPanelModel}
         environmentId={activeThreadRef?.environmentId ?? null}
         threadId={activeThreadRef?.threadId ?? null}
+        selectedAgentId={isElectron ? selectedSubagentId : null}
+        onSelectAgent={isElectron ? setSelectedSubagentId : undefined}
+        stoppableAgentId={singleStoppableAgentId}
+        stopping={isStoppingBackgroundWork}
+        onStopAgent={handleStopSingleAgent}
       />
     ) : renderedRightPanelSurface?.kind === "device" ? (
       <Suspense fallback={null}>
@@ -9085,6 +9414,11 @@ export default function ChatView(props: ChatViewProps) {
             onAddProjectScript={saveProjectScript}
             onUpdateProjectScript={updateProjectScript}
             onDeleteProjectScript={deleteProjectScript}
+            launchEntries={launchEntries}
+            primaryLaunchEntry={primaryLaunch}
+            onRunLaunchEntry={runLaunchEntry}
+            onOpenLaunchJson={openLaunchJson}
+            onLaunchMenuOpen={launchConfigsQuery.refresh}
           />
         </WorkspacePageHeader>
 
@@ -9129,87 +9463,125 @@ export default function ChatView(props: ChatViewProps) {
                 }}
               />
             </div>
+            {launchSessions.length > 0 ? (
+              <LaunchSessionBar
+                sessions={launchSessions}
+                onRestart={restartLaunchSession}
+                onStop={stopLaunchSession}
+                visibleTerminalId={
+                  terminalUiState.terminalOpen ? terminalUiState.activeTerminalId : null
+                }
+                onToggleTerminal={toggleLaunchTerminal}
+                onDismiss={dismissLaunchSession}
+                onHotReload={hotReloadLaunchSession}
+              />
+            ) : null}
+            <LaunchInputsDialog
+              request={pendingLaunchInputs}
+              onCancel={() => setPendingLaunchInputs(null)}
+              onSubmit={(values) => {
+                const request = pendingLaunchInputs;
+                setPendingLaunchInputs(null);
+                if (request) void runLaunchEntry(request.name, values);
+              }}
+            />
             {/* Messages Wrapper */}
             <div className="relative flex min-h-0 flex-1 flex-col bg-background">
-              {/* Messages — LegendList handles virtualization and scrolling internally */}
-              <MessagesTimeline
-                citationRequest={paintOnlyDisplayedTimeline ? null : citationRequest}
-                citationHistoryLoading={threadDetailLoading}
-                {...(!paintOnlyDisplayedTimeline
-                  ? {
-                      onCiteAssistantText: citeAssistantText,
-                      agentPanelModel,
-                      onOpenAgents: addAgentsSurface,
-                      onUseArtifactTemplate: useArtifactTemplate,
-                    }
-                  : {})}
-                isWorking={!paintOnlyDisplayedTimeline && isWorking}
-                isPreparingWorktree={!paintOnlyDisplayedTimeline && isPreparingWorktree}
-                isCompacting={!paintOnlyDisplayedTimeline && isCompacting}
-                activeTurnStartedAt={paintOnlyDisplayedTimeline ? null : activeWorkStartedAt}
-                worktreeSetup={paintOnlyDisplayedTimeline ? null : worktreeSetup}
-                onCancelWorktreeSetup={onCancelWorktreeSetup}
-                {...(draftId ? { onWorktreeSetupWorkLocally } : {})}
-                {...(onOpenWorktreeSetupTerminal ? { onOpenWorktreeSetupTerminal } : {})}
-                listRef={legendListRef}
-                timelineEntries={displayedTimeline.entries}
-                latestTurn={paintOnlyDisplayedTimeline ? null : activeLatestTurn}
-                runningTurnId={paintOnlyDisplayedTimeline ? null : activeRunningTurnId}
-                turnDiffSummaries={
-                  paintOnlyDisplayedTimeline
-                    ? EMPTY_HELD_TURN_DIFF_SUMMARIES
-                    : activeThread.checkpoints
-                }
-                activeThreadEnvironmentId={
-                  displayedThreadRef?.environmentId ?? activeThread.environmentId
-                }
-                routeThreadKey={displayedTimelineKey}
-                displayThreadKey={displayedTimelineKey}
-                onOpenTurnDiff={paintOnlyDisplayedTimeline ? noopHeldTurnDiff : onOpenTurnDiff}
-                supportsConversationRollback={
-                  !paintOnlyDisplayedTimeline && supportsConversationRollback
-                }
-                onRevertToTurnCount={
-                  paintOnlyDisplayedTimeline ? noopHeldRevert : onRevertTimelineTurn
-                }
-                isRevertingCheckpoint={!paintOnlyDisplayedTimeline && isRevertingCheckpoint}
-                onImageExpand={onExpandTimelineImage}
-                onFileOpen={paintOnlyDisplayedTimeline ? noopHeldAttachment : openFileAttachment}
-                onFileDownload={
-                  paintOnlyDisplayedTimeline ? noopHeldAttachment : downloadFileAttachment
-                }
-                markdownCwd={
-                  paintOnlyDisplayedTimeline
-                    ? (heldPaintContext?.markdownCwd ?? undefined)
-                    : (gitCwd ?? undefined)
-                }
-                resolvedTheme={resolvedTheme}
-                timestampFormat={timestampFormat}
-                workspaceRoot={
-                  paintOnlyDisplayedTimeline
-                    ? (heldPaintContext?.workspaceRoot ?? undefined)
-                    : activeWorkspaceRoot
-                }
-                skills={
-                  activeProviderStatus
-                    ? resolveProviderSkillsForCwd(activeProviderStatus, gitCwd)
-                    : EMPTY_PROVIDER_SKILLS
-                }
-                anchorMessageId={paintOnlyDisplayedTimeline ? null : timelineAnchorMessageId}
-                onAnchorReady={onTimelineAnchorReady}
-                contentInsetEndAdjustment={composerTimelineInset}
-                liveFollowEnabled={!paintOnlyDisplayedTimeline && timelineLiveFollowEnabled}
-                onIsAtEndChange={onIsAtEndChange}
-                onContentOverflowChange={setTimelineOverflows}
-                onToolOutputCollapsedAtEnd={onToolOutputCollapsedAtEnd}
-                onManualNavigation={cancelTimelineLiveFollowForUserNavigation}
-                hideEmptyPlaceholder={isDraftHeroState || threadDetailLoading}
-                topFadeEnabled={!hasTimelineTopBanner}
-                loadEarlier={paintOnlyDisplayedTimeline ? null : loadEarlierTurns}
-              />
+              {activePlan && !selectedSubagent ? (
+                <ClaudePlanCard
+                  explanation={activePlan.explanation}
+                  steps={activePlan.steps}
+                  live={isWorking}
+                />
+              ) : null}
+              {isElectron && selectedSubagent ? (
+                <SubagentDetailView
+                  agent={selectedSubagent}
+                  onBack={() => setSelectedSubagentId(null)}
+                  canStop={singleStoppableAgentId === selectedSubagent.id}
+                  stopping={isStoppingBackgroundWork}
+                  onStop={handleStopSingleAgent}
+                />
+              ) : (
+                <MessagesTimeline
+                  citationRequest={paintOnlyDisplayedTimeline ? null : citationRequest}
+                  citationHistoryLoading={threadDetailLoading}
+                  {...(!paintOnlyDisplayedTimeline
+                    ? {
+                        onCiteAssistantText: citeAssistantText,
+                        agentPanelModel,
+                        onOpenAgents: addAgentsSurface,
+                        onUseArtifactTemplate: useArtifactTemplate,
+                      }
+                    : {})}
+                  isWorking={!paintOnlyDisplayedTimeline && isWorking}
+                  isPreparingWorktree={!paintOnlyDisplayedTimeline && isPreparingWorktree}
+                  isCompacting={!paintOnlyDisplayedTimeline && isCompacting}
+                  activeTurnStartedAt={paintOnlyDisplayedTimeline ? null : activeWorkStartedAt}
+                  worktreeSetup={paintOnlyDisplayedTimeline ? null : worktreeSetup}
+                  onCancelWorktreeSetup={onCancelWorktreeSetup}
+                  {...(draftId ? { onWorktreeSetupWorkLocally } : {})}
+                  {...(onOpenWorktreeSetupTerminal ? { onOpenWorktreeSetupTerminal } : {})}
+                  listRef={legendListRef}
+                  timelineEntries={displayedTimeline.entries}
+                  latestTurn={paintOnlyDisplayedTimeline ? null : activeLatestTurn}
+                  runningTurnId={paintOnlyDisplayedTimeline ? null : activeRunningTurnId}
+                  turnDiffSummaries={
+                    paintOnlyDisplayedTimeline
+                      ? EMPTY_HELD_TURN_DIFF_SUMMARIES
+                      : activeThread.checkpoints
+                  }
+                  activeThreadEnvironmentId={
+                    displayedThreadRef?.environmentId ?? activeThread.environmentId
+                  }
+                  routeThreadKey={displayedTimelineKey}
+                  displayThreadKey={displayedTimelineKey}
+                  onOpenTurnDiff={paintOnlyDisplayedTimeline ? noopHeldTurnDiff : onOpenTurnDiff}
+                  supportsConversationRollback={
+                    !paintOnlyDisplayedTimeline && supportsConversationRollback
+                  }
+                  onRevertToTurnCount={
+                    paintOnlyDisplayedTimeline ? noopHeldRevert : onRevertTimelineTurn
+                  }
+                  isRevertingCheckpoint={!paintOnlyDisplayedTimeline && isRevertingCheckpoint}
+                  onImageExpand={onExpandTimelineImage}
+                  onFileOpen={paintOnlyDisplayedTimeline ? noopHeldAttachment : openFileAttachment}
+                  onFileDownload={
+                    paintOnlyDisplayedTimeline ? noopHeldAttachment : downloadFileAttachment
+                  }
+                  markdownCwd={
+                    paintOnlyDisplayedTimeline
+                      ? (heldPaintContext?.markdownCwd ?? undefined)
+                      : (gitCwd ?? undefined)
+                  }
+                  resolvedTheme={resolvedTheme}
+                  timestampFormat={timestampFormat}
+                  workspaceRoot={
+                    paintOnlyDisplayedTimeline
+                      ? (heldPaintContext?.workspaceRoot ?? undefined)
+                      : activeWorkspaceRoot
+                  }
+                  skills={
+                    activeProviderStatus
+                      ? resolveProviderSkillsForCwd(activeProviderStatus, gitCwd)
+                      : EMPTY_PROVIDER_SKILLS
+                  }
+                  anchorMessageId={paintOnlyDisplayedTimeline ? null : timelineAnchorMessageId}
+                  onAnchorReady={onTimelineAnchorReady}
+                  contentInsetEndAdjustment={composerTimelineInset}
+                  liveFollowEnabled={!paintOnlyDisplayedTimeline && timelineLiveFollowEnabled}
+                  onIsAtEndChange={onIsAtEndChange}
+                  onContentOverflowChange={setTimelineOverflows}
+                  onToolOutputCollapsedAtEnd={onToolOutputCollapsedAtEnd}
+                  onManualNavigation={cancelTimelineLiveFollowForUserNavigation}
+                  hideEmptyPlaceholder={isDraftHeroState || threadDetailLoading}
+                  topFadeEnabled={!hasTimelineTopBanner}
+                  loadEarlier={paintOnlyDisplayedTimeline ? null : loadEarlierTurns}
+                />
+              )}
 
               {/* scroll to end pill — shown when user has scrolled away from the live edge */}
-              {showScrollToBottom && (
+              {showScrollToBottom && !(isElectron && selectedSubagent) && (
                 <div
                   className="pointer-events-none absolute left-1/2 z-30 flex -translate-x-1/2 justify-center py-1.5"
                   style={{ bottom: scrollToEndClearance + 4 }}
@@ -9349,6 +9721,7 @@ export default function ChatView(props: ChatViewProps) {
                             activeProjectDefaultModelSelection={activeProjectDefaultModelSelection}
                             activeThreadModelSelection={activeThread?.modelSelection}
                             activeContextWindow={activeContextWindow}
+                            threadSkillNames={threadSkillNames}
                             compactThreadUnavailable={compactThreadUnavailable}
                             compactDisabled={compactDisabled}
                             compactDisabledReason={compactDisabledReason}
@@ -9469,6 +9842,10 @@ export default function ChatView(props: ChatViewProps) {
               </div>
             </div>
 
+            {activeThreadRef && !(activePreviewMiniPlayer && previewMiniPlayerVisible) ? (
+              <DeviceTargetStatus threadRef={activeThreadRef} />
+            ) : null}
+
             {activeThreadRef && activePreviewMiniPlayer && previewMiniPlayerVisible ? (
               <ThreadPreviewMiniPlayer
                 key={`${activeThreadKey}:${previewMiniPlayerSourceKey(activePreviewMiniPlayer.source)}`}
@@ -9582,6 +9959,8 @@ export default function ChatView(props: ChatViewProps) {
           onAddPullRequests={addPullRequestsSurface}
           onAddAgents={addAgentsSurface}
           onAddDevice={addDeviceSurface}
+          onAddLaunch={addLaunchSurface}
+          onAddCommitGraph={addCommitGraphSurface}
           browserAvailable={isPreviewSupportedInRuntime()}
           terminalAvailable={activeProject !== null}
           diffAvailable={isServerThread && isGitRepo}
@@ -9590,6 +9969,8 @@ export default function ChatView(props: ChatViewProps) {
           pullRequestsAvailable={pullRequestsSurfaceAvailable}
           agentsAvailable
           deviceAvailable={activeThreadRef !== null}
+          launchAvailable={activeThreadRef !== null && gitCwd !== null}
+          commitGraphAvailable={activeThreadRef !== null && gitCwd !== null}
           liveAgentCount={agentPanelModel.liveCount}
         >
           {rightPanelContent}
@@ -9640,6 +10021,8 @@ export default function ChatView(props: ChatViewProps) {
             onAddPullRequests={addPullRequestsSurface}
             onAddAgents={addAgentsSurface}
             onAddDevice={addDeviceSurface}
+            onAddLaunch={addLaunchSurface}
+            onAddCommitGraph={addCommitGraphSurface}
             browserAvailable={isPreviewSupportedInRuntime()}
             terminalAvailable={activeProject !== null}
             diffAvailable={isServerThread && isGitRepo}
@@ -9648,6 +10031,8 @@ export default function ChatView(props: ChatViewProps) {
             pullRequestsAvailable={pullRequestsSurfaceAvailable}
             agentsAvailable
             deviceAvailable={activeThreadRef !== null}
+            launchAvailable={activeThreadRef !== null && gitCwd !== null}
+            commitGraphAvailable={activeThreadRef !== null && gitCwd !== null}
             liveAgentCount={agentPanelModel.liveCount}
           >
             {rightPanelContent}

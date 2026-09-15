@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import {
+  androidTextChunks,
   createDeviceStreamClient,
   AvccDemuxer,
   avcCodecString,
@@ -176,5 +177,175 @@ describe("iOS input startup", () => {
       y,
     });
     client.stop();
+  });
+});
+
+describe("Android paste", () => {
+  it("splits text into 300-byte chunks without cutting a multi-byte character", () => {
+    const text = `${"a".repeat(299)}é${"b".repeat(10)}`;
+    const chunks = [...androidTextChunks(text)];
+    expect(chunks.map((chunk) => new TextEncoder().encode(chunk).length)).toEqual([299, 12]);
+    expect(chunks.join("")).toBe(text);
+  });
+});
+
+describe("Android video startup", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  // serve-emu frame: "SEMU", version 1, key flag, 8-byte pts at offset 8, then Annex-B NAL units.
+  const semuPacket = (key: boolean) => {
+    const annexB = key
+      ? [0, 0, 0, 1, 0x67, 0x42, 0x80, 0x0a, 0, 0, 0, 1, 0x65, 0x88]
+      : [0, 0, 0, 1, 0x41, 0x9a];
+    const bytes = new Uint8Array(16 + annexB.length);
+    const view = new DataView(bytes.buffer);
+    view.setUint32(0, 0x53454d55);
+    view.setUint8(4, 1);
+    view.setUint8(5, key ? 1 : 0);
+    bytes.set(annexB, 16);
+    return bytes.buffer;
+  };
+  const session = (width: number, height: number) =>
+    JSON.stringify({ type: "video-session", size: { width, height } });
+
+  const setup = () => {
+    const sockets: FakeSocket[] = [];
+    class FakeSocket {
+      static OPEN = 1;
+      readyState = 1;
+      binaryType = "";
+      onopen: (() => void) | null = null;
+      onmessage: ((event: { data: ArrayBuffer | string }) => void) | null = null;
+      onclose: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+      send = vi.fn();
+      close = vi.fn();
+      constructor() {
+        sockets.push(this);
+      }
+    }
+    const support: Array<(result: { supported: boolean }) => void> = [];
+    const decoded: string[] = [];
+    let decoders = 0;
+    class FakeVideoDecoder {
+      static isConfigSupported = () =>
+        new Promise<{ supported: boolean }>((resolve) => {
+          support.push(resolve);
+        });
+      state = "unconfigured";
+      decodeQueueSize = 0;
+      constructor() {
+        decoders++;
+      }
+      configure() {
+        this.state = "configured";
+      }
+      decode(chunk: { type: string }) {
+        decoded.push(chunk.type);
+      }
+      close() {
+        this.state = "closed";
+      }
+    }
+    vi.stubGlobal("WebSocket", FakeSocket);
+    vi.stubGlobal("VideoDecoder", FakeVideoDecoder);
+    vi.stubGlobal(
+      "EncodedVideoChunk",
+      class {
+        readonly type: string;
+        constructor(init: { type: string }) {
+          this.type = init.type;
+        }
+      },
+    );
+    const client = createDeviceStreamClient(
+      {
+        platform: "android",
+        deviceId: "phone",
+        access: {
+          httpBase: "http://test/api/device-hub",
+          wsBase: "ws://test/api/device-hub",
+          credentials: true,
+          query: {},
+        },
+      },
+      { getContext: () => null } as unknown as HTMLCanvasElement,
+      {
+        onStatus: vi.fn(),
+        onScreen: vi.fn(),
+        onUnauthorized: vi.fn(),
+        onMjpegFallback: vi.fn(),
+        onInputConnected: vi.fn(),
+      },
+    );
+    client.start();
+    const socket = sockets[0]!;
+    socket.onopen?.();
+    return {
+      client,
+      support,
+      decoded,
+      decoders: () => decoders,
+      receive: (data: ArrayBuffer | string) => socket.onmessage?.({ data }),
+      // On scrcpy each keyframe request restarts the session for every viewer.
+      keyframeRequests: () =>
+        socket.send.mock.calls
+          .flat()
+          .map(String)
+          .filter((sent) => sent.includes("reset-video")).length,
+    };
+  };
+
+  it("decodes the keyframe that configured the decoder instead of restarting the phone's session", async () => {
+    const stream = setup();
+    stream.receive(session(576, 1280));
+    stream.receive(semuPacket(true));
+    // Arrives while the decoder is still being configured.
+    stream.receive(semuPacket(false));
+    stream.support[0]!({ supported: true });
+
+    await vi.waitFor(() => expect(stream.decoded).toEqual(["key", "delta"]));
+    expect(stream.keyframeRequests()).toBe(0);
+    stream.client.stop();
+  });
+
+  it("keeps the decoder through a same-size session restart", async () => {
+    const stream = setup();
+    stream.receive(session(576, 1280));
+    stream.receive(semuPacket(true));
+    stream.support[0]!({ supported: true });
+    await vi.waitFor(() => expect(stream.decoded).toEqual(["key"]));
+
+    // Another viewer asked for a keyframe, so the session restarts at the same size.
+    stream.receive(session(576, 1280));
+    stream.receive(semuPacket(false));
+    stream.receive(semuPacket(true));
+    stream.receive(semuPacket(false));
+
+    expect(stream.decoded).toEqual(["key", "key", "delta"]);
+    expect(stream.decoders()).toBe(1);
+    expect(stream.keyframeRequests()).toBe(0);
+    stream.client.stop();
+  });
+
+  it("rebuilds the decoder after rotation and asks for one keyframe at a time", async () => {
+    const stream = setup();
+    stream.receive(session(576, 1280));
+    stream.receive(semuPacket(true));
+    stream.support[0]!({ supported: true });
+    await vi.waitFor(() => expect(stream.decoded).toEqual(["key"]));
+
+    stream.receive(session(1280, 576));
+    stream.receive(semuPacket(false));
+    stream.receive(semuPacket(false));
+    expect(stream.keyframeRequests()).toBe(1);
+
+    stream.receive(semuPacket(true));
+    stream.support[1]!({ supported: true });
+    await vi.waitFor(() => expect(stream.decoded).toEqual(["key", "key"]));
+    expect(stream.decoders()).toBe(2);
+    stream.client.stop();
   });
 });

@@ -26,6 +26,8 @@ import * as ProcessRunner from "../processRunner.ts";
 
 const DEVICE_HUB_PACKAGE = "expo-device-hub";
 export const DEVICE_HUB_VERSION = "0.9.0";
+/** scrcpy server version vendored by DEVICE_HUB_VERSION. Bump together. */
+export const DEVICE_HUB_SCRCPY_VERSION = "4.0";
 const AGENT_DEVICE_PACKAGE = "agent-device";
 export const AGENT_DEVICE_VERSION = "0.20.10";
 
