@@ -1,7 +1,8 @@
 import type { DevicePlatform, EnvironmentId } from "@t3tools/contracts";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { cn } from "~/lib/utils";
+import { Button } from "~/components/ui/button";
 import { refreshDeviceHubAccess, useDeviceHubAccess } from "~/state/device";
 import { DeviceLoadingView } from "./DeviceLoadingView";
 import { type DeviceAxElement, fetchDeviceAxTree } from "./deviceHubApi";
@@ -11,7 +12,7 @@ import {
   type DeviceScreenSize,
   type DeviceStreamClient,
   type DeviceStreamStatus,
-} from "./deviceStream";
+} from "@t3tools/client-runtime/device/stream";
 
 const AX_POLL_INTERVAL_MS = 2_000;
 
@@ -20,14 +21,12 @@ export interface DeviceStreamHandle {
   readonly rotate: () => void;
   /** False while the input socket is down; controls should disable. */
   readonly inputConnected: boolean;
-  /** The decoded frames for recording, or null while the MJPEG fallback paints an image instead. */
-  readonly captureVideo: (fps: number) => MediaStream | null;
 }
 
 /**
  * The live device screen. Pointer events map onto normalized coordinates in
- * the displayed frame and go to the device; keyboard input and pasted text are
- * forwarded while the surface is focused. `visible=false` tears the stream down so a hidden
+ * the displayed frame and go to the device; keyboard input is forwarded while
+ * the surface is focused. `visible=false` tears the stream down so a hidden
  * panel decodes nothing.
  */
 export function DeviceStreamView(props: {
@@ -46,12 +45,14 @@ export function DeviceStreamView(props: {
   const access = useDeviceHubAccess(props.environmentId, props.hostId);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const clientRef = useRef<DeviceStreamClient | null>(null);
-  const mjpegActiveRef = useRef(false);
   const [status, setStatus] = useState<DeviceStreamStatus>("connecting");
   const [detail, setDetail] = useState<string | undefined>(undefined);
   const [screen, setScreen] = useState<DeviceScreenSize | null>(null);
   const [mjpegUrl, setMjpegUrl] = useState<string | null>(null);
   const [mjpegGeneration, setMjpegGeneration] = useState(0);
+  const attachMjpegImage = useCallback((image: HTMLImageElement | null) => {
+    clientRef.current?.setMjpegImage(image);
+  }, []);
   const [inputState, setInputState] = useState<{ connected: boolean; detail?: string }>({
     connected: false,
   });
@@ -64,12 +65,6 @@ export function DeviceStreamView(props: {
       onHandle?.(null);
       return;
     }
-    const handleFor = (inputConnected: boolean): DeviceStreamHandle => ({
-      pressButton: client.pressButton,
-      rotate: client.rotate,
-      inputConnected,
-      captureVideo: (fps) => (mjpegActiveRef.current ? null : canvas.captureStream(fps)),
-    });
     const client = createDeviceStreamClient(
       { platform: props.platform, deviceId: props.deviceId, access },
       canvas,
@@ -87,22 +82,24 @@ export function DeviceStreamView(props: {
           refreshDeviceHubAccess(props.environmentId);
         },
         onMjpegFallback: (url) => {
-          mjpegActiveRef.current = true;
           setMjpegUrl(url);
           setMjpegGeneration((generation) => generation + 1);
         },
         onInputConnected: (connected, detail) => {
           setInputState({ connected, ...(detail ? { detail } : {}) });
-          onHandle?.(handleFor(connected));
+          onHandle?.({
+            pressButton: client.pressButton,
+            rotate: client.rotate,
+            inputConnected: connected,
+          });
         },
       },
     );
     clientRef.current = client;
-    mjpegActiveRef.current = false;
     setMjpegUrl(null);
     setInputState({ connected: false });
     client.start();
-    onHandle?.(handleFor(false));
+    onHandle?.({ pressButton: client.pressButton, rotate: client.rotate, inputConnected: false });
     return () => {
       client.stop();
       clientRef.current = null;
@@ -242,20 +239,14 @@ export function DeviceStreamView(props: {
       role="application"
       aria-label={`${props.platform === "ios" ? "iOS Simulator" : "Android Emulator"} screen`}
       onKeyDown={(event) => {
-        // Cmd/Ctrl+V must reach the browser so it raises the paste event below.
-        if ((event.metaKey || event.ctrlKey) && (event.key === "v" || event.key === "V")) return;
+        if (event.target !== event.currentTarget) return;
         if (event.metaKey && !["r", "R"].includes(event.key)) return;
         event.preventDefault();
         clientRef.current?.sendKey(event.nativeEvent, "down");
       }}
       onKeyUp={(event) => {
+        if (event.target !== event.currentTarget) return;
         clientRef.current?.sendKey(event.nativeEvent, "up");
-      }}
-      onPaste={(event) => {
-        const text = event.clipboardData.getData("text/plain");
-        if (!text) return;
-        event.preventDefault();
-        clientRef.current?.sendText(text);
       }}
     >
       <div
@@ -294,7 +285,7 @@ export function DeviceStreamView(props: {
         {props.visible && access && mjpegUrl ? (
           <img
             key={mjpegGeneration}
-            src={mjpegUrl}
+            ref={attachMjpegImage}
             alt=""
             draggable={false}
             className="absolute top-0 left-0 object-contain"
@@ -332,14 +323,29 @@ export function DeviceStreamView(props: {
         </div>
       ) : null}
       {status !== "streaming" ? (
-        <div className="pointer-events-none absolute inset-0">
+        <div className="absolute inset-0">
           <DeviceLoadingView
             name={props.deviceName ?? "Device"}
             description={props.deviceDescription ?? ""}
             stage="stream"
             message={status === "error" ? (detail ?? "Stream failed.") : "Connecting video…"}
             error={status === "error"}
-          />
+          >
+            {status === "error" ? (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  // An expired ticket surfaces as unauthorized on restart and
+                  // refreshes access through the effect; no need to mint one here.
+                  clientRef.current?.stop();
+                  clientRef.current?.start();
+                }}
+              >
+                Reconnect
+              </Button>
+            ) : null}
+          </DeviceLoadingView>
         </div>
       ) : null}
     </div>

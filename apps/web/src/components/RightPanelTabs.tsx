@@ -21,11 +21,7 @@ import {
   ChevronRight,
   FileDiff,
   Files,
-  GitBranch,
-  GitPullRequest,
-  GitPullRequestArrow,
   Globe2,
-  Play,
   Plus,
   TerminalSquare,
   Volume2,
@@ -38,6 +34,7 @@ import {
   type ReactNode,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -66,7 +63,11 @@ import { ScrollArea } from "~/components/ui/scroll-area";
 import { PanelTabCloseButton } from "~/components/ui/panel-tab-close-button";
 import { faviconUrlForOrigin } from "~/lib/favicon";
 import { useTheme } from "~/hooks/useTheme";
-import { pullRequestEnvironment } from "~/state/pullRequests";
+import {
+  newestPullRequestSummary,
+  pullRequestEnvironment,
+  useSharedPullRequestSummary,
+} from "~/state/pullRequests";
 import { useEnvironmentQuery } from "~/state/query";
 import { COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS } from "~/workspaceTitlebar";
 
@@ -75,6 +76,7 @@ import { FaviconImage } from "./preview/PreviewFaviconIcon";
 import { previewBridge } from "./preview/previewBridge";
 import { PierreEntryIcon } from "./chat/PierreEntryIcon";
 import { resolvePullRequestState } from "./pullRequest/pullRequestPresentation";
+import { PullRequestGlyph } from "~/components/pullRequest/pullRequestIcons";
 
 interface RightPanelTabsProps {
   mode: PreviewPanelMode;
@@ -120,8 +122,6 @@ interface RightPanelTabsProps {
   onAddPullRequests: () => void;
   onAddAgents: () => void;
   onAddDevice: () => void;
-  onAddLaunch: () => void;
-  onAddCommitGraph: () => void;
   browserAvailable: boolean;
   terminalAvailable: boolean;
   diffAvailable: boolean;
@@ -130,8 +130,6 @@ interface RightPanelTabsProps {
   pullRequestsAvailable: boolean;
   agentsAvailable: boolean;
   deviceAvailable: boolean;
-  launchAvailable: boolean;
-  commitGraphAvailable: boolean;
   pullRequestStatusSeeds?: Readonly<Record<string, PullRequestTabStatusSeed>>;
   /** Running + waiting subagents; badges the Agents card in the empty state. */
   liveAgentCount: number;
@@ -163,8 +161,6 @@ const SURFACE_DISABLED_REASONS = {
   pullRequests: "No linked pull requests are available for this thread.",
   agents: "Agents are only available from a thread.",
   device: "Devices are only available from a thread.",
-  launch: "Run & Debug is only available when a project is open.",
-  commitGraph: "Source Control is only available for threads in Git repositories.",
 } as const;
 
 /** Overlays that must win over the launcher's letter shortcuts. */
@@ -189,8 +185,6 @@ const SURFACE_UNAVAILABLE_HINTS = {
   pullRequests: "No linked pull requests available.",
   agents: "Available from a thread.",
   device: "Available from a thread.",
-  launch: "Available when a project is open.",
-  commitGraph: "Available for Git repositories.",
 } as const;
 
 type TabContextMenuAction =
@@ -331,8 +325,6 @@ function RightPanelEmptyState(props: {
   onAddPullRequests: () => void;
   onAddAgents: () => void;
   onAddDevice: () => void;
-  onAddLaunch: () => void;
-  onAddCommitGraph: () => void;
   browserAvailable: boolean;
   terminalAvailable: boolean;
   diffAvailable: boolean;
@@ -341,8 +333,6 @@ function RightPanelEmptyState(props: {
   pullRequestsAvailable: boolean;
   agentsAvailable: boolean;
   deviceAvailable: boolean;
-  launchAvailable: boolean;
-  commitGraphAvailable: boolean;
   liveAgentCount: number;
 }) {
   // -1 means no highlight: it only appears on hover or arrow use.
@@ -387,7 +377,7 @@ function RightPanelEmptyState(props: {
     },
     {
       label: "Pull request",
-      icon: GitPullRequest,
+      icon: PullRequestGlyph.pullRequest,
       shortcut: "P",
       available: props.pullRequestAvailable,
       disabledReason: SURFACE_UNAVAILABLE_HINTS.pullRequest,
@@ -396,7 +386,7 @@ function RightPanelEmptyState(props: {
     },
     {
       label: "Linked pull requests",
-      icon: GitPullRequestArrow,
+      icon: PullRequestGlyph.link,
       shortcut: "L",
       available: props.pullRequestsAvailable,
       disabledReason: SURFACE_UNAVAILABLE_HINTS.pullRequests,
@@ -420,26 +410,6 @@ function RightPanelEmptyState(props: {
       available: props.deviceAvailable,
       disabledReason: SURFACE_UNAVAILABLE_HINTS.device,
       onClick: props.onAddDevice,
-      badgeCount: 0,
-    },
-    {
-      label: "Run & Debug",
-      description: "Run configurations from .vscode/launch.json.",
-      icon: Play,
-      shortcut: "R",
-      available: props.launchAvailable,
-      disabledReason: SURFACE_UNAVAILABLE_HINTS.launch,
-      onClick: props.onAddLaunch,
-      badgeCount: 0,
-    },
-    {
-      label: "Source Control",
-      description: "Commit graph, staging, and the commit box.",
-      icon: GitBranch,
-      shortcut: "G",
-      available: props.commitGraphAvailable,
-      disabledReason: SURFACE_UNAVAILABLE_HINTS.commitGraph,
-      onClick: props.onAddCommitGraph,
       badgeCount: 0,
     },
   ] as const;
@@ -664,10 +634,6 @@ function surfaceTitle(
       return "Pull requests";
     case "agents":
       return "Agents";
-    case "launch":
-      return "Run & Debug";
-    case "commit-graph":
-      return "Source Control";
     case "device":
       return surface.title ?? surface.target?.name ?? "Device";
     case "preview": {
@@ -750,13 +716,9 @@ function SurfaceIcon({
         />
       );
     case "pull-requests":
-      return <GitPullRequestArrow className="size-3 shrink-0" />;
+      return <PullRequestGlyph.link className="size-3 shrink-0" />;
     case "agents":
       return <Bot className="size-3 shrink-0" />;
-    case "launch":
-      return <Play className="size-3 shrink-0" />;
-    case "commit-graph":
-      return <GitBranch className="size-3 shrink-0" />;
     case "device":
       return surface.target?.platform === "ios" ? (
         <AppleIcon className="size-3 shrink-0" />
@@ -843,18 +805,26 @@ function PullRequestSurfaceIcon({
           },
         }),
   ).data;
-  // Only state and draft reach the tab. A list seed cannot know mergeability, so feeding the
-  // full detail would flip an open tab to the conflict glyph the moment its read lands.
-  const status =
-    linkedSnapshot !== null
-      ? linkedSnapshot
-      : detail === null
-        ? (seed ?? null)
-        : { state: detail.state, isDraft: detail.isDraft };
+  const reference = useMemo(
+    () => ({
+      projectId: surface.projectId as ProjectId,
+      repository: surface.repository,
+      number: surface.number,
+    }),
+    [surface.projectId, surface.repository, surface.number],
+  );
+  const sharedSummary = useSharedPullRequestSummary(resolvedEnvironmentId, reference, null);
+  // The compact tab intentionally shows lifecycle and draft state only. Conflict warnings have
+  // their own presentation on surfaces that have mergeability, while this tab stays stable as
+  // detail data arrives.
+  const status = linkedSnapshot ?? newestPullRequestSummary(detail, sharedSummary) ?? seed ?? null;
   if (status === null) {
-    return <GitPullRequest className="size-3 shrink-0 text-muted-foreground" />;
+    return <PullRequestGlyph.pullRequest className="size-3 shrink-0 text-muted-foreground" />;
   }
-  const presentation = resolvePullRequestState({ state: status.state, isDraft: status.isDraft });
+  const presentation = resolvePullRequestState({
+    state: status.state,
+    isDraft: status.isDraft ?? detail?.isDraft ?? seed?.isDraft ?? false,
+  });
   return <presentation.Icon className={cn("size-3 shrink-0", presentation.toneClassName)} />;
 }
 
@@ -937,7 +907,7 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
     },
     {
       label: "Pull request",
-      icon: GitPullRequest,
+      icon: PullRequestGlyph.pullRequest,
       shortcut: "P",
       available: props.pullRequestAvailable,
       disabledReason: SURFACE_DISABLED_REASONS.pullRequest,
@@ -945,7 +915,7 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
     },
     {
       label: "Linked pull requests",
-      icon: GitPullRequestArrow,
+      icon: PullRequestGlyph.link,
       shortcut: "L",
       available: props.pullRequestsAvailable,
       disabledReason: SURFACE_DISABLED_REASONS.pullRequests,
@@ -966,22 +936,6 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
       available: props.deviceAvailable,
       disabledReason: SURFACE_DISABLED_REASONS.device,
       onClick: props.onAddDevice,
-    },
-    {
-      label: "Run & Debug",
-      icon: Play,
-      shortcut: "R",
-      available: props.launchAvailable,
-      disabledReason: SURFACE_DISABLED_REASONS.launch,
-      onClick: props.onAddLaunch,
-    },
-    {
-      label: "Source Control",
-      icon: GitBranch,
-      shortcut: "G",
-      available: props.commitGraphAvailable,
-      disabledReason: SURFACE_DISABLED_REASONS.commitGraph,
-      onClick: props.onAddCommitGraph,
     },
   ] as const;
 
@@ -1455,8 +1409,6 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
             onAddPullRequests={props.onAddPullRequests}
             onAddAgents={props.onAddAgents}
             onAddDevice={props.onAddDevice}
-            onAddLaunch={props.onAddLaunch}
-            onAddCommitGraph={props.onAddCommitGraph}
             browserAvailable={props.browserAvailable}
             terminalAvailable={props.terminalAvailable}
             diffAvailable={props.diffAvailable}
@@ -1465,8 +1417,6 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
             pullRequestsAvailable={props.pullRequestsAvailable}
             agentsAvailable={props.agentsAvailable}
             deviceAvailable={props.deviceAvailable}
-            launchAvailable={props.launchAvailable}
-            commitGraphAvailable={props.commitGraphAvailable}
             liveAgentCount={props.liveAgentCount}
           />
         ) : (
