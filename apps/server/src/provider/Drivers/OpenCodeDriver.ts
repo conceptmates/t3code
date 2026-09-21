@@ -36,7 +36,12 @@ import {
 } from "../Layers/OpenCodeProvider.ts";
 import { ProviderEventLoggers } from "../Layers/ProviderEventLoggers.ts";
 import { makeManagedServerProvider } from "../makeManagedServerProvider.ts";
-import { OpenCodeRuntime, loadOpenCodeCommands } from "../opencodeRuntime.ts";
+import {
+  OpenCodeRuntime,
+  loadOpenCodeCommands,
+  resolveOpenCodeServerStartupTimeoutMs,
+  type OpenCodeServerConnection,
+} from "../opencodeRuntime.ts";
 import * as OpenCodeServerOwner from "../OpenCodeServerOwner.ts";
 import {
   defaultProviderContinuationIdentity,
@@ -144,6 +149,9 @@ export const OpenCodeDriver: ProviderDriver<OpenCodeSettings, OpenCodeDriverEnv>
           ? { serverPassword: effectiveConfig.serverPassword }
           : {}),
         environment: processEnv,
+        timeoutMs: resolveOpenCodeServerStartupTimeoutMs(
+          effectiveConfig.serverStartupTimeoutSeconds,
+        ),
       });
       const textGeneration = yield* makeOpenCodeTextGeneration(effectiveConfig).pipe(
         Effect.provideService(OpenCodeServerOwner.OpenCodeServerOwner, serverOwner),
@@ -176,10 +184,22 @@ export const OpenCodeDriver: ProviderDriver<OpenCodeSettings, OpenCodeDriverEnv>
       // empty skill list and poisons the workspace snapshot the `$` picker
       // reads. The SDK `app.skills` endpoint honors the per-request directory
       // and returns complete results regardless of size.
-      const loadWorkspaceInventory = (client: Parameters<typeof loadOpenCodeCommands>[0]) =>
-        Effect.all(
+      const loadWorkspaceInventory = (
+        server: Pick<OpenCodeServerConnection, "url" | "serverPassword" | "apiVersion">,
+        cwd: string,
+      ) => {
+        const client = openCodeRuntime.createOpenCodeSdkClient({
+          baseUrl: server.url,
+          directory: cwd,
+          ...(server.serverPassword !== undefined ? { serverPassword: server.serverPassword } : {}),
+        });
+        const skills =
+          server.apiVersion === "v2"
+            ? openCodeRuntime.loadOpenCodeSkillsV2(client, cwd)
+            : openCodeRuntime.loadOpenCodeSkills(client);
+        return Effect.all(
           {
-            skills: openCodeRuntime.loadOpenCodeSkills(client),
+            skills,
             commands: loadOpenCodeCommands(client).pipe(
               Effect.timeout("10 seconds"),
               Effect.orElseSucceed(() => []),
@@ -187,6 +207,7 @@ export const OpenCodeDriver: ProviderDriver<OpenCodeSettings, OpenCodeDriverEnv>
           },
           { concurrency: "unbounded" },
         );
+      };
       const loadWorkspaceForCwd = (cwd: string) =>
         effectiveConfig.serverUrl.trim().length > 0
           ? Effect.scoped(
@@ -200,27 +221,10 @@ export const OpenCodeDriver: ProviderDriver<OpenCodeSettings, OpenCodeDriverEnv>
                     : {}),
                   environment: processEnv,
                 });
-                const client = openCodeRuntime.createOpenCodeSdkClient({
-                  baseUrl: server.url,
-                  directory: cwd,
-                  ...(effectiveConfig.serverPassword
-                    ? { serverPassword: effectiveConfig.serverPassword }
-                    : {}),
-                });
-                return yield* loadWorkspaceInventory(client);
+                return yield* loadWorkspaceInventory(server, cwd);
               }),
             )
-          : serverOwner.withServer((server) =>
-              loadWorkspaceInventory(
-                openCodeRuntime.createOpenCodeSdkClient({
-                  baseUrl: server.url,
-                  directory: cwd,
-                  ...(server.serverPassword !== undefined
-                    ? { serverPassword: server.serverPassword }
-                    : {}),
-                }),
-              ),
-            );
+          : serverOwner.withServer((server) => loadWorkspaceInventory(server, cwd));
 
       const snapshotSettings = makeProviderSnapshotSettingsSource(effectiveConfig, serverSettings);
       const snapshot = yield* makeManagedServerProvider<ProviderSnapshotSettings<OpenCodeSettings>>(

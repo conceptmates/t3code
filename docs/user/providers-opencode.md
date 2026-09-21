@@ -47,3 +47,14 @@ restart before T3 Code can see configuration changes.
 
 Existing threads keep their selected model and options even when it disappears
 from the catalog. If OpenCode rejects that model, select an available one and retry.
+
+## OpenCode v2 servers
+
+T3 Code detects OpenCode v2 automatically and reads provider, model, and skill
+inventories from its v2 API. For an external server, enter the server password
+from `opencode serve` in **Server password**; v2 protects the API with HTTP Basic
+Auth. Local servers receive an ephemeral password automatically.
+
+Provider status and model discovery work with v2 servers. Thread turns still use
+OpenCode's v1 session protocol, so use a v1 server for existing threads until
+that protocol migration is complete.

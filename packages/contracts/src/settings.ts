@@ -872,13 +872,25 @@ export const OpenCodeSettings = makeProviderSettingsSchema(
         },
       }),
     ),
+    serverStartupTimeoutSeconds: TrimmedString.pipe(
+      Schema.withDecodingDefault(Effect.succeed("")),
+      Schema.annotateKey({
+        title: "Server startup timeout",
+        description:
+          "Seconds to wait for the local OpenCode server to start. Default 30. Changing it restarts the server.",
+        providerSettingsForm: {
+          placeholder: "30",
+          clearWhenEmpty: "omit",
+        },
+      }),
+    ),
     customModels: Schema.Array(CustomModelSetting).pipe(
       Schema.withDecodingDefault(Effect.succeed([])),
       Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
     ),
   },
   {
-    order: ["binaryPath", "serverUrl", "serverPassword"],
+    order: ["binaryPath", "serverUrl", "serverPassword", "serverStartupTimeoutSeconds"],
   },
 );
 export type OpenCodeSettings = typeof OpenCodeSettings.Type;

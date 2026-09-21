@@ -48,6 +48,7 @@ const makeRuntime = Effect.gen(function* () {
         return {
           url: `http://127.0.0.1:${index}`,
           version: "1.14.19",
+          apiVersion: "v1",
           isRunning: Effect.succeed(true),
           exitCode: Effect.never,
         };
@@ -57,6 +58,8 @@ const makeRuntime = Effect.gen(function* () {
     createOpenCodeSdkClient: () => ({}) as never,
     loadOpenCodeInventory: unusedRuntimeMethod,
     loadOpenCodeSkills: unusedRuntimeMethod,
+    loadOpenCodeInventoryV2: unusedRuntimeMethod,
+    loadOpenCodeSkillsV2: unusedRuntimeMethod,
     loadInventoryFromCli: unusedRuntimeMethod,
     loadSkillsFromCli: unusedRuntimeMethod,
   };
@@ -131,6 +134,7 @@ it.effect("invalidates an exited process so the next borrower starts a new one",
           return {
             url: `http://127.0.0.1:${index}`,
             version: "1.14.19",
+            apiVersion: "v1",
             isRunning: Effect.succeed(true),
             exitCode: Deferred.await(exitCode),
           };
@@ -140,6 +144,8 @@ it.effect("invalidates an exited process so the next borrower starts a new one",
       createOpenCodeSdkClient: () => ({}) as never,
       loadOpenCodeInventory: unusedRuntimeMethod,
       loadOpenCodeSkills: unusedRuntimeMethod,
+      loadOpenCodeInventoryV2: unusedRuntimeMethod,
+      loadOpenCodeSkillsV2: unusedRuntimeMethod,
       loadInventoryFromCli: unusedRuntimeMethod,
       loadSkillsFromCli: unusedRuntimeMethod,
     };
@@ -179,6 +185,7 @@ it.effect("replaces a dead cached process before its exit watcher runs", () =>
           return {
             url: `http://127.0.0.1:${index}`,
             version: "1.14.19",
+            apiVersion: "v1",
             isRunning: Ref.get(isRunning),
             exitCode: Effect.never,
           };
@@ -188,6 +195,8 @@ it.effect("replaces a dead cached process before its exit watcher runs", () =>
       createOpenCodeSdkClient: () => ({}) as never,
       loadOpenCodeInventory: unusedRuntimeMethod,
       loadOpenCodeSkills: unusedRuntimeMethod,
+      loadOpenCodeInventoryV2: unusedRuntimeMethod,
+      loadOpenCodeSkillsV2: unusedRuntimeMethod,
       loadInventoryFromCli: unusedRuntimeMethod,
       loadSkillsFromCli: unusedRuntimeMethod,
     };
@@ -234,6 +243,7 @@ it.effect("cleans up an interrupted startup and allows a retry", () =>
           return {
             url: `http://127.0.0.1:${index}`,
             version: "1.14.19",
+            apiVersion: "v1",
             isRunning: Effect.succeed(true),
             exitCode: Effect.never,
           };
@@ -243,6 +253,8 @@ it.effect("cleans up an interrupted startup and allows a retry", () =>
       createOpenCodeSdkClient: () => ({}) as never,
       loadOpenCodeInventory: unusedRuntimeMethod,
       loadOpenCodeSkills: unusedRuntimeMethod,
+      loadOpenCodeInventoryV2: unusedRuntimeMethod,
+      loadOpenCodeSkillsV2: unusedRuntimeMethod,
       loadInventoryFromCli: unusedRuntimeMethod,
       loadSkillsFromCli: unusedRuntimeMethod,
     };
@@ -290,4 +302,68 @@ it.effect("releases an interrupted borrower and closes after the idle TTL", () =
       }),
     ).pipe(Effect.provideService(OpenCodeRuntime, testRuntime.runtime));
   }).pipe(Effect.provide(TestClock.layer())),
+);
+
+it.effect("restart closes the cached server so the next borrower starts a new one", () =>
+  Effect.gen(function* () {
+    const testRuntime = yield* makeRuntime;
+    yield* Effect.scoped(
+      Effect.gen(function* () {
+        const owner = yield* OpenCodeServerOwner.make({
+          binaryPath: "opencode",
+          directory: "/project",
+        });
+        expect(yield* owner.withServer((server) => Effect.succeed(server.url))).toBe(
+          "http://127.0.0.1:1",
+        );
+        yield* owner.restart();
+        expect(yield* owner.withServer((server) => Effect.succeed(server.url))).toBe(
+          "http://127.0.0.1:2",
+        );
+      }),
+    ).pipe(Effect.provideService(OpenCodeRuntime, testRuntime.runtime));
+    expect(yield* Ref.get(testRuntime.starts)).toBe(2);
+  }),
+);
+
+it.effect("passes timeoutMs through to server startup", () =>
+  Effect.gen(function* () {
+    const seen = yield* Ref.make<Array<number | undefined>>([]);
+    const runtime: OpenCodeRuntimeShape = {
+      startOpenCodeServerProcess: (input) =>
+        Effect.gen(function* () {
+          yield* Ref.update(seen, (list) => [...list, input.timeoutMs]);
+          yield* Effect.addFinalizer(() => Effect.void);
+          return {
+            url: "http://127.0.0.1:1",
+            version: "1.14.19",
+            apiVersion: "v1",
+            isRunning: Effect.succeed(true),
+            exitCode: Effect.never,
+          };
+        }),
+      connectToOpenCodeServer: unusedRuntimeMethod,
+      runOpenCodeCommand: unusedRuntimeMethod,
+      createOpenCodeSdkClient: () => ({}) as never,
+      loadOpenCodeInventory: unusedRuntimeMethod,
+      loadOpenCodeSkills: unusedRuntimeMethod,
+      loadOpenCodeInventoryV2: unusedRuntimeMethod,
+      loadOpenCodeSkillsV2: unusedRuntimeMethod,
+      loadInventoryFromCli: unusedRuntimeMethod,
+      loadSkillsFromCli: unusedRuntimeMethod,
+    };
+    yield* Effect.scoped(
+      Effect.gen(function* () {
+        const owner = yield* OpenCodeServerOwner.make({
+          binaryPath: "opencode",
+          directory: "/project",
+          timeoutMs: 60_000,
+        });
+        expect(yield* owner.withServer((server) => Effect.succeed(server.url))).toBe(
+          "http://127.0.0.1:1",
+        );
+      }),
+    ).pipe(Effect.provideService(OpenCodeRuntime, runtime));
+    expect(yield* Ref.get(seen)).toEqual([60_000]);
+  }),
 );

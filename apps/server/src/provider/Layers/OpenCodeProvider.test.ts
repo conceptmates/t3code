@@ -209,6 +209,7 @@ const OpenCodeRuntimeTestDouble: OpenCodeRuntimeShape = {
           ? { serverPassword: effectiveServerPassword }
           : {}),
         version: "1.14.19",
+        apiVersion: "v1",
         isRunning: Effect.succeed(true),
         exitCode: Effect.never,
       };
@@ -233,6 +234,7 @@ const OpenCodeRuntimeTestDouble: OpenCodeRuntimeShape = {
         url: serverUrl ?? "http://127.0.0.1:4301",
         ...(serverPassword ? { serverPassword } : {}),
         version: "1.14.19",
+        apiVersion: "v1",
         exitCode: null,
         external: Boolean(serverUrl),
       };
@@ -277,6 +279,17 @@ const OpenCodeRuntimeTestDouble: OpenCodeRuntimeShape = {
   },
   loadOpenCodeSkills: () => Effect.succeed([]),
   loadSkillsFromCli: () => Effect.succeed([]),
+  loadOpenCodeInventoryV2: () =>
+    runtimeMock.state.inventoryError
+      ? Effect.fail(
+          new OpenCodeRuntimeError({
+            operation: "loadOpenCodeInventoryV2",
+            detail: runtimeMock.state.inventoryError.message,
+            cause: runtimeMock.state.inventoryError,
+          }),
+        )
+      : Effect.succeed(runtimeMock.state.inventory as OpenCodeInventory),
+  loadOpenCodeSkillsV2: () => Effect.succeed([]),
 };
 
 beforeEach(() => {

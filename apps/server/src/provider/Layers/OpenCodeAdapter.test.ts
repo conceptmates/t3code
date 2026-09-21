@@ -213,6 +213,7 @@ const OpenCodeRuntimeTestDouble: OpenCodeRuntimeShape = {
       return {
         url,
         version: "1.15.13",
+        apiVersion: "v1",
         ...(serverPassword ? { serverPassword } : {}),
         exitCode: Effect.never,
         isRunning: Effect.succeed(true),
@@ -234,6 +235,7 @@ const OpenCodeRuntimeTestDouble: OpenCodeRuntimeShape = {
       return {
         url,
         version: "1.15.13",
+        apiVersion: "v1",
         ...(serverPassword ? { serverPassword } : {}),
         exitCode: null,
         external: Boolean(serverUrl),
@@ -571,6 +573,15 @@ const OpenCodeRuntimeTestDouble: OpenCodeRuntimeShape = {
       }),
     ),
   loadSkillsFromCli: () => Effect.succeed([]),
+  loadOpenCodeInventoryV2: () =>
+    Effect.fail(
+      new OpenCodeRuntimeError({
+        operation: "loadOpenCodeInventoryV2",
+        detail: "OpenCodeRuntimeTestDouble.loadOpenCodeInventoryV2 not used in this test",
+        cause: null,
+      }),
+    ),
+  loadOpenCodeSkillsV2: () => Effect.succeed([]),
 };
 
 const providerSessionDirectoryTestLayer = Layer.succeed(ProviderSessionDirectory, {

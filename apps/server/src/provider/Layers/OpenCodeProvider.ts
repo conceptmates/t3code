@@ -24,9 +24,11 @@ import {
   MINIMUM_OPENCODE_VERSION,
   OpenCodeRuntime,
   openCodeRuntimeErrorDetail,
+  type OpenCodeApiVersion,
   type OpenCodeInventory,
+  type OpenCodeInventoryAgent,
+  type OpenCodeInventoryModel,
 } from "../opencodeRuntime.ts";
-import type { Agent, ProviderListResponse } from "@opencode-ai/sdk/v2";
 import * as OpenCodeServerOwner from "../OpenCodeServerOwner.ts";
 
 const OPENCODE_PRESENTATION = {
@@ -169,7 +171,7 @@ function inferDefaultVariant(
   return undefined;
 }
 
-function inferDefaultAgent(agents: ReadonlyArray<Agent>): string | undefined {
+function inferDefaultAgent(agents: ReadonlyArray<OpenCodeInventoryAgent>): string | undefined {
   return agents.find((agent) => agent.name === "build")?.name ?? agents[0]?.name ?? undefined;
 }
 
@@ -202,8 +204,8 @@ const DEFAULT_OPENCODE_MODEL_CAPABILITIES: ModelCapabilities = createModelCapabi
 
 function openCodeCapabilitiesForModel(input: {
   readonly providerID: string;
-  readonly model: ProviderListResponse["all"][number]["models"][string];
-  readonly agents: ReadonlyArray<Agent>;
+  readonly model: OpenCodeInventoryModel;
+  readonly agents: ReadonlyArray<OpenCodeInventoryAgent>;
 }): ModelCapabilities {
   const rawVariantValues = Object.keys(input.model.variants ?? {});
   // When a model advertises no variants, synthesize the standard reasoning
@@ -266,7 +268,7 @@ function flattenOpenCodeModels(input: OpenCodeInventory): ReadonlyArray<ServerPr
     }
 
     for (const model of Object.values(provider.models)) {
-      const name = nonEmptyTrimmed(model.name);
+      const name = nonEmptyTrimmed(model.name ?? undefined);
       if (!name) {
         continue;
       }
@@ -500,16 +502,19 @@ export const checkOpenCodeProviderStatus = Effect.fn("checkOpenCodeProviderStatu
     readonly url: string;
     readonly serverPassword?: string;
     readonly version: string;
-  }) =>
-    openCodeRuntime
-      .loadOpenCodeInventory(
-        openCodeRuntime.createOpenCodeSdkClient({
-          baseUrl: server.url,
-          directory: cwd,
-          ...(server.serverPassword !== undefined ? { serverPassword: server.serverPassword } : {}),
-        }),
-      )
-      .pipe(Effect.map((inventory) => ({ inventory, version: server.version })));
+    readonly apiVersion: OpenCodeApiVersion;
+  }) => {
+    const client = openCodeRuntime.createOpenCodeSdkClient({
+      baseUrl: server.url,
+      directory: cwd,
+      ...(server.serverPassword !== undefined ? { serverPassword: server.serverPassword } : {}),
+    });
+    const inventory =
+      server.apiVersion === "v2"
+        ? openCodeRuntime.loadOpenCodeInventoryV2(client, cwd)
+        : openCodeRuntime.loadOpenCodeInventory(client);
+    return inventory.pipe(Effect.map((loaded) => ({ inventory: loaded, version: server.version })));
+  };
   const inventoryEffect = isExternalServer
     ? openCodeRuntime
         .connectToOpenCodeServer({
