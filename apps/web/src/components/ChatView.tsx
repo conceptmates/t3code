@@ -405,6 +405,7 @@ import {
   shouldOfferResumeCompaction,
 } from "./chat/ContextWindowMeter.logic";
 import { deriveLatestContextWindowSnapshot, formatContextWindowTokens } from "../lib/contextWindow";
+import { deriveThreadSkillNames } from "../lib/threadSkills";
 import {
   DRAFT_HERO_TRANSITION_ANIMATION_ID,
   DRAFT_HERO_TRANSITION_DURATION_MS,
@@ -2915,6 +2916,17 @@ export default function ChatView(props: ChatViewProps) {
   const activeContextWindow = useMemo(
     () => deriveLatestContextWindowSnapshot(threadActivities),
     [threadActivities],
+  );
+  const threadMessages = activeThread?.messages;
+  // Keyed by the joined names: streaming tool updates rebuild the list, but the
+  // composer only re-renders when a skill is actually added.
+  const threadSkillNamesKey = useMemo(
+    () => deriveThreadSkillNames(threadMessages ?? [], threadActivities).join("\n"),
+    [threadActivities, threadMessages],
+  );
+  const threadSkillNames = useMemo(
+    () => (threadSkillNamesKey === "" ? [] : threadSkillNamesKey.split("\n")),
+    [threadSkillNamesKey],
   );
   const workLogEntries = useMemo(() => deriveWorkLogEntries(threadActivities), [threadActivities]);
   // Native subagent fold: memoized by activity-list identity, shared by the
@@ -10123,6 +10135,7 @@ export default function ChatView(props: ChatViewProps) {
                             activeProjectDefaultModelSelection={activeProjectDefaultModelSelection}
                             activeThreadModelSelection={activeThread?.modelSelection}
                             activeContextWindow={activeContextWindow}
+                            threadSkillNames={threadSkillNames}
                             compactThreadUnavailable={compactThreadUnavailable}
                             compactDisabled={compactDisabled}
                             compactDisabledReason={compactDisabledReason}
