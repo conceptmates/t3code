@@ -53,7 +53,34 @@ export interface DeviceStreamTarget {
   readonly preferMjpeg?: boolean;
 }
 
-export type DeviceHardwareButton = "home" | "back" | "recents" | "power" | "appSwitcher";
+export type DeviceHardwareButton =
+  | "home"
+  | "back"
+  | "recents"
+  | "power"
+  | "appSwitcher"
+  | "volumeUp"
+  | "volumeDown";
+
+// scrcpy drops text past 300 UTF-8 bytes in one inject message.
+const ANDROID_TEXT_CHUNK_BYTES = 300;
+const textEncoder = new TextEncoder();
+
+export function* androidTextChunks(text: string) {
+  let chunk = "";
+  let bytes = 0;
+  for (const char of text) {
+    const size = textEncoder.encode(char).length;
+    if (bytes + size > ANDROID_TEXT_CHUNK_BYTES) {
+      yield chunk;
+      chunk = "";
+      bytes = 0;
+    }
+    chunk += char;
+    bytes += size;
+  }
+  if (chunk) yield chunk;
+}
 
 const RETRY_DELAY_MS = 1_000;
 const FIRST_FRAME_TIMEOUT_MS = 15_000;
@@ -217,6 +244,8 @@ export interface DeviceStreamClient {
   readonly sendKey: (event: KeyboardEvent, phase: "down" | "up") => void;
   readonly pressButton: (button: DeviceHardwareButton) => void;
   readonly rotate: () => void;
+  /** Types text into the focused field. Android only; serve-sim takes HID keys. */
+  readonly sendText: (text: string) => void;
 }
 
 const HID_USAGE_BY_CODE: Readonly<Record<string, number>> = {
@@ -836,6 +865,11 @@ export function createDeviceStreamClient(
         send(JSON.stringify({ type: "text", text: event.key }));
       }
     },
+    sendText: (text) => {
+      if (platform === "ios") return;
+      for (const chunk of androidTextChunks(text))
+        send(JSON.stringify({ type: "text", text: chunk }));
+    },
     pressButton: (button) => {
       if (platform === "ios") {
         const name =
@@ -847,6 +881,10 @@ export function createDeviceStreamClient(
                 ? "lock"
                 : null;
         if (name) send(taggedJson(IOS_MSG_BUTTON, { button: name }));
+        return;
+      }
+      if (button === "volumeUp" || button === "volumeDown") {
+        send(JSON.stringify({ type: "key", keycode: button === "volumeUp" ? 24 : 25 }));
         return;
       }
       const type = button === "appSwitcher" ? "recents" : button;

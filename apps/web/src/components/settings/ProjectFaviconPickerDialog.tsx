@@ -4,7 +4,6 @@ import { isWindowsAbsolutePath } from "@t3tools/shared/path";
 import { useMemo, useState } from "react";
 
 import { primaryServerKeybindingsAtom } from "~/state/server";
-import { useTheme } from "~/hooks/useTheme";
 import { getLocalFileManagerName, isWindowsPlatform } from "~/lib/utils";
 import { CommandPaletteContent } from "../CommandPaletteContent";
 import type { CommandPaletteActionItem } from "../CommandPalette.logic";
@@ -46,7 +45,6 @@ export function ProjectFaviconPickerDialog(props: {
     PROJECT_FILE_PICKER_RESULT_LIMIT,
     { imageOnly: true },
   );
-  const { resolvedTheme } = useTheme();
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
   const pickExternal = props.onPickExternal;
   const fileManagerName = getLocalFileManagerName(
@@ -60,10 +58,10 @@ export function ProjectFaviconPickerDialog(props: {
         searchTerms: [match.name, match.path],
         title: match.name,
         description: match.path,
-        icon: <PierreEntryIcon pathValue={match.path} kind="file" theme={resolvedTheme} />,
+        icon: <PierreEntryIcon pathValue={match.path} kind="file" />,
         run: async () => props.onSelect(match.path),
       })),
-    [props.onSelect, resolvedTheme, result.entries, result.matchedQuery],
+    [props.onSelect, result.entries, result.matchedQuery],
   );
 
   return (

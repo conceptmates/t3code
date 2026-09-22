@@ -260,6 +260,20 @@ contextBridge.exposeInMainWorld("desktopBridge", {
       ipcRenderer.removeListener(IpcChannels.UPDATE_STATE_CHANNEL, wrappedListener);
     };
   },
+  touchBar: {
+    setIcons: (icons) => ipcRenderer.invoke(IpcChannels.TOUCH_BAR_SET_ICONS_CHANNEL, icons),
+    setState: (state) => ipcRenderer.invoke(IpcChannels.TOUCH_BAR_SET_STATE_CHANNEL, state),
+    onAction: (listener) => {
+      const wrappedListener = (_event: Electron.IpcRendererEvent, action: unknown) => {
+        if (typeof action !== "object" || action === null || !("kind" in action)) return;
+        listener(action as Parameters<typeof listener>[0]);
+      };
+      ipcRenderer.on(IpcChannels.TOUCH_BAR_ACTION_CHANNEL, wrappedListener);
+      return () => {
+        ipcRenderer.removeListener(IpcChannels.TOUCH_BAR_ACTION_CHANNEL, wrappedListener);
+      };
+    },
+  },
   appActivation: {
     setReady: (ready) =>
       ipcRenderer.invoke(IpcChannels.DESKTOP_APP_ACTIVATION_READY_CHANNEL, ready),

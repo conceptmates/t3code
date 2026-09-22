@@ -1,60 +1,47 @@
 import { assert, describe, it } from "vite-plus/test";
 
+import { MATERIAL_ICON_SPRITE } from "./materialIcons.generated";
 import {
   hasSpecificPierreIconForFileName,
-  materialFolderColorsForPath,
   resolvePierreIconForEntry,
   syntheticFileNameForLanguageId,
   T3_PIERRE_ICONS,
 } from "./pierre-icons";
 
-describe("Pierre file icons", () => {
-  it("uses Pierre exact filename and complete-set extension mappings", () => {
-    assert.equal(resolvePierreIconForEntry("Dockerfile", "file")?.token, "docker");
-    assert.equal(resolvePierreIconForEntry("src/Button.tsx", "file")?.token, "react");
-    assert.equal(resolvePierreIconForEntry("vite.config.ts", "file")?.token, "vite");
+const spriteSymbolIds = new Set(
+  [...MATERIAL_ICON_SPRITE.matchAll(/<symbol id="([^"]+)"/g)].map((match) => match[1]),
+);
+
+describe("file icon resolution", () => {
+  it("matches exact filenames", () => {
+    assert.equal(resolvePierreIconForEntry("package.json", "file").name, "mi-nodejs");
+    assert.equal(resolvePierreIconForEntry("config/tsconfig.json", "file").name, "mi-tsconfig");
+    assert.equal(resolvePierreIconForEntry("Dockerfile", "file").name, "mi-docker");
   });
 
-  it("uses built-in Pierre icons where available", () => {
-    assert.equal(resolvePierreIconForEntry("package.json", "file")?.name, "file-tree-builtin-npm");
+  it("falls back to progressively shorter extensions", () => {
+    assert.equal(resolvePierreIconForEntry("src/Button.tsx", "file").name, "mi-react_ts");
     assert.equal(
-      resolvePierreIconForEntry("config/tsconfig.json", "file")?.name,
-      "file-tree-builtin-typescript",
-    );
-    assert.equal(resolvePierreIconForEntry("CLAUDE.md", "file")?.name, "file-tree-builtin-claude");
-    assert.equal(
-      resolvePierreIconForEntry("README.md", "file")?.name,
-      "file-tree-builtin-markdown",
+      resolvePierreIconForEntry("src/Button.test.tsx", "file").name,
+      resolvePierreIconForEntry("src/Button.spec.tsx", "file").name,
     );
   });
 
-  it("extends Pierre with T3-specific exact filename icons", () => {
-    assert.equal(resolvePierreIconForEntry("AGENTS.md", "file")?.name, "t3-file-icon-agents");
-    assert.equal(resolvePierreIconForEntry("pnpm-lock.yaml", "file")?.name, "t3-file-icon-pnpm");
-    assert.equal(
-      resolvePierreIconForEntry("pnpm-workspace.yaml", "file")?.name,
-      "t3-file-icon-pnpm",
-    );
+  it("maps agent files upstream leaves generic", () => {
+    assert.equal(resolvePierreIconForEntry("CLAUDE.md", "file").name, "mi-claude");
+    assert.equal(resolvePierreIconForEntry("AGENTS.md", "file").name, "mi-agent");
   });
 
-  it("ships every custom icon referenced by the extended resolver", () => {
-    const customIconNames = new Set(
-      Object.values(T3_PIERRE_ICONS.byFileName)
-        .map((entry) => (typeof entry === "string" ? entry : entry.name))
-        .filter((name) => name.startsWith("t3-")),
-    );
-    for (const iconName of customIconNames) {
-      assert.include(T3_PIERRE_ICONS.spriteSheet, `id="${iconName}"`);
-    }
-  });
-
-  it("uses the Pierre default icon for unknown file types", () => {
-    assert.equal(resolvePierreIconForEntry("artifact.unknown-ext", "file")?.token, "default");
+  it("uses the generic file glyph for unknown types", () => {
+    assert.equal(resolvePierreIconForEntry("artifact.unknown-ext", "file").name, "mi-file");
     assert.isFalse(hasSpecificPierreIconForFileName("artifact.unknown-ext"));
+    assert.isTrue(hasSpecificPierreIconForFileName(".gitignore"));
   });
 
-  it("leaves directory rendering to the shared folder fallback", () => {
-    assert.isNull(resolvePierreIconForEntry("packages/client-runtime", "directory"));
+  it("resolves folders by basename, case-insensitively", () => {
+    assert.equal(resolvePierreIconForEntry("apps/web/SRC", "directory").name, "mi-folder-src");
+    assert.equal(resolvePierreIconForEntry("node_modules", "directory").name, "mi-folder-node");
+    assert.equal(resolvePierreIconForEntry("some-random-dir", "directory").name, "mi-folder");
   });
 
   it("normalizes common markdown fence language aliases", () => {
@@ -64,43 +51,26 @@ describe("Pierre file icons", () => {
   });
 });
 
-describe("Material file cover", () => {
-  it("maps dotfiles and tool configs to specific tokens", () => {
-    assert.isTrue(hasSpecificPierreIconForFileName(".gitignore"));
-    assert.isTrue(hasSpecificPierreIconForFileName(".mcp.json"));
-    assert.isTrue(hasSpecificPierreIconForFileName(".env"));
-    assert.isTrue(hasSpecificPierreIconForFileName("Dockerfile"));
-    assert.isTrue(hasSpecificPierreIconForFileName("go.mod"));
+describe("generated Material sprite", () => {
+  it("ships a symbol for every icon the rules can return", () => {
+    const referenced = new Set([
+      ...Object.values(T3_PIERRE_ICONS.byFileName),
+      ...Object.values(T3_PIERRE_ICONS.byFileExtension),
+      T3_PIERRE_ICONS.remap["file-tree-icon-file"],
+    ]);
+    for (const symbolId of referenced) {
+      assert.isTrue(spriteSymbolIds.has(symbolId), `sprite is missing ${symbolId}`);
+    }
   });
 
-  it("matches substrings for versioned env files and tsconfigs", () => {
-    assert.isTrue(hasSpecificPierreIconForFileName(".env.local"));
-    assert.isTrue(hasSpecificPierreIconForFileName("tsconfig.node.json"));
-    assert.isTrue(hasSpecificPierreIconForFileName("docker-compose.override.yml"));
+  it("keeps every id unique, so one icon's gradient cannot capture another's", () => {
+    const ids = [...MATERIAL_ICON_SPRITE.matchAll(/\bid="([^"]+)"/g)].map((match) => match[1]);
+    assert.equal(new Set(ids).size, ids.length);
   });
 
-  it("carries color tokens on overrides (glyph alone would render gray)", () => {
-    assert.equal(resolvePierreIconForEntry(".env", "file")?.token, "database");
-    assert.equal(resolvePierreIconForEntry(".env.local", "file")?.token, "database");
-    assert.equal(resolvePierreIconForEntry("go.mod", "file")?.token, "go");
-  });
-});
-
-describe("materialFolderColorsForPath", () => {
-  it("tints well-known folders by basename", () => {
-    assert.equal(materialFolderColorsForPath("node_modules")[0], "#199f43");
-    assert.equal(materialFolderColorsForPath("src")[0], "#1a85d4");
-    assert.equal(materialFolderColorsForPath("patches")[0], "#d52c36");
-  });
-
-  it("matches the last path segment case-insensitively", () => {
-    assert.deepEqual(
-      materialFolderColorsForPath("apps/web/SRC"),
-      materialFolderColorsForPath("src"),
-    );
-  });
-
-  it("falls back to blue for unknown folders", () => {
-    assert.equal(materialFolderColorsForPath("some-random-dir")[0], "#1a85d4");
+  it("keeps internal references pointing inside their own icon", () => {
+    for (const match of MATERIAL_ICON_SPRITE.matchAll(/url\(#([^)]+)\)/g)) {
+      assert.include(match[1] ?? "", "__", `${match[0]} was not namespaced`);
+    }
   });
 });

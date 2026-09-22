@@ -252,12 +252,7 @@ function OpenContentSearchDialog(props: {
               return (
                 <section className="pb-2" key={group.path}>
                   <div className="sticky top-0 z-10 flex h-8 items-center gap-2 bg-popover/95 px-3 text-xs backdrop-blur-sm">
-                    <PierreEntryIcon
-                      pathValue={group.path}
-                      kind="file"
-                      theme={resolvedTheme}
-                      className="size-3.5"
-                    />
+                    <PierreEntryIcon pathValue={group.path} kind="file" className="size-3.5" />
                     <span className="font-medium text-foreground">{path.name}</span>
                     {path.directory ? (
                       <span className="min-w-0 truncate text-muted-foreground">

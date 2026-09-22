@@ -81,7 +81,7 @@ const fixture = Effect.fn("fixture")(function* (
   const ready: DeviceHost.DeviceHostReady = {
     nodePath: process.execPath,
     hub: { origin: "http://device.test" },
-    helpers: { serveSimAxSettings: null, serveSimCli: null },
+    helpers: { serveSimAxSettings: null, serveSimCli: null, scrcpyServer: null },
     run: () => Effect.succeed({ code: 0, stdout: "Pixel_API_35\n", stderr: "" }),
   };
   const host: DeviceHost.DeviceHost["Service"] = {
@@ -284,6 +284,21 @@ describe("device setup consent", () => {
       }).pipe(Effect.scoped),
   );
 
+  it.effect("names the thread's open device for its shells and agents", () =>
+    Effect.gen(function* () {
+      const { service } = yield* fixture();
+      yield* service.configure({ enabled: true });
+      const threadId = ThreadId.make("device-env");
+      expect(yield* service.threadDeviceEnvironment(threadId)).toEqual({});
+      yield* service.open({ threadId, deviceId: "Pixel_API_35", platform: "android" });
+      expect(yield* service.threadDeviceEnvironment(threadId)).toEqual({
+        T3CODE_DEVICE_ID: "emulator-5554",
+        T3CODE_DEVICE_PLATFORM: "android",
+        ANDROID_SERIAL: "emulator-5554",
+      });
+    }).pipe(Effect.scoped),
+  );
+
   it.effect("boots a stopped Android AVD and uses its emulator serial without duplicating it", () =>
     Effect.gen(function* () {
       const { service, requests } = yield* fixture();
@@ -414,7 +429,7 @@ it.effect.each(["shutdown", "close"] as const)(
       const ready: DeviceHost.DeviceHostReady = {
         nodePath: process.execPath,
         hub: { origin: "http://device.test" },
-        helpers: { serveSimAxSettings: null, serveSimCli: null },
+        helpers: { serveSimAxSettings: null, serveSimCli: null, scrcpyServer: null },
         run: () => Effect.succeed({ code: 0, stdout: "", stderr: "" }),
       };
       const host: DeviceHost.DeviceHost["Service"] = {
@@ -505,7 +520,7 @@ it.effect.each([
       const ready: DeviceHost.DeviceHostReady = {
         nodePath: process.execPath,
         hub: { origin: "http://device.test" },
-        helpers: { serveSimAxSettings: null, serveSimCli: null },
+        helpers: { serveSimAxSettings: null, serveSimCli: null, scrcpyServer: null },
         run: () => Effect.succeed({ code: 0, stdout: "", stderr: "" }),
       };
       const host: DeviceHost.DeviceHost["Service"] = {

@@ -39,7 +39,7 @@ export function LaunchControl({
 }: LaunchControlProps) {
   const primaryBlockedReason = launchEntryBlockedReason(primaryEntry);
   const runShortcut = shortcutLabelForCommand(keybindings, "launch.run", {
-    context: { desktop: isElectron },
+    context: { isDesktop: isElectron, isWeb: !isElectron },
   });
 
   return (
@@ -61,7 +61,10 @@ export function LaunchControl({
           }
         >
           <PlayIcon className="size-3.5" />
-          <span className="sr-only max-w-40 truncate @3xl/header-actions:not-sr-only @3xl/header-actions:ml-0.5">
+          {/* `not-sr-only` resets white-space and overflow, so it cannot be
+              combined with `truncate`; long entry names wrapped out of the
+              button. Toggle display instead and keep the label ellipsized. */}
+          <span className="ml-0.5 hidden max-w-40 truncate @3xl/header-actions:block">
             {primaryEntry.name}
           </span>
         </TooltipTrigger>

@@ -1111,6 +1111,111 @@ export const DesktopPreviewAutomationWaitForInputSchema = Schema.Struct({
 });
 
 /**
+ * One provider on the macOS Touch Bar strip, already formatted by the renderer.
+ *
+ * Each provider gets its own chip: the brand glyph plus `label`, which is the
+ * bare session percentage. The name is never written out — the glyph carries
+ * it, and the strip has no room to say it twice.
+ *
+ * `detail` is the popover row written as text. It is only used when the
+ * rendered row image is missing, so a glyph the renderer failed to draw
+ * degrades to words rather than to a blank button.
+ */
+export const DesktopTouchBarProviderSchema = Schema.Struct({
+  instanceId: Schema.String.check(Schema.isTrimmed()).check(Schema.isNonEmpty()),
+  /** Picks the brand glyph from the icons the renderer registered. */
+  driverKind: Schema.String.check(Schema.isTrimmed()).check(Schema.isNonEmpty()),
+  label: Schema.String,
+  detail: Schema.String,
+  selected: Schema.Boolean,
+  /** Read aloud in place of the glyph, which VoiceOver cannot describe. */
+  accessibilityLabel: Schema.String,
+});
+export type DesktopTouchBarProvider = typeof DesktopTouchBarProviderSchema.Type;
+
+/**
+ * Artwork as PNG bytes, keyed by the name the strip refers to it by:
+ * `provider:<driverKind>` for a 36x36 brand glyph, `row:<instanceId>` for a
+ * whole popover row drawn with real quota bars.
+ *
+ * The app's icons are React SVG components and its bars are CSS, neither of
+ * which the main process can rasterize, so the renderer draws both and
+ * registers them here. They cross the boundary on their own rather than riding
+ * the strip payload, which stays small enough to diff on every change.
+ */
+export const DesktopTouchBarIconsSchema = Schema.Array(
+  Schema.Struct({
+    key: Schema.String.check(Schema.isTrimmed()).check(Schema.isNonEmpty()),
+    bytes: Schema.Uint8Array,
+  }),
+);
+export type DesktopTouchBarIcons = typeof DesktopTouchBarIconsSchema.Type;
+
+export const DesktopTouchBarRunStateSchema = Schema.Literals(["idle", "running", "blocked"]);
+export type DesktopTouchBarRunState = typeof DesktopTouchBarRunStateSchema.Type;
+
+/** One row in a Touch Bar popover list: a project to jump to, or a filter to apply. */
+export const DesktopTouchBarChoiceSchema = Schema.Struct({
+  key: Schema.String.check(Schema.isTrimmed()).check(Schema.isNonEmpty()),
+  label: Schema.String,
+  selected: Schema.Boolean,
+});
+export type DesktopTouchBarChoice = typeof DesktopTouchBarChoiceSchema.Type;
+
+/**
+ * The whole strip, left to right: one chip per provider, the project controls,
+ * then run. `run` is null outside a thread or without a launch config, and the
+ * strip reflows rather than showing a button that cannot do anything.
+ *
+ * The Escape key is deliberately left alone — overriding it takes the real
+ * Escape away from every other use while the window is focused.
+ */
+export const DesktopTouchBarStateSchema = Schema.Struct({
+  providers: Schema.Array(DesktopTouchBarProviderSchema),
+  /** Tinted while the drawer is open, so each button reads as a toggle. */
+  sidebarOpen: Schema.Boolean,
+  /** Null outside a thread, where there is no terminal drawer to open. */
+  terminalOpen: Schema.NullOr(Schema.Boolean),
+  /** Configured projects, for the switcher. Empty hides that button. */
+  projects: Schema.Array(DesktopTouchBarChoiceSchema),
+  /** Sidebar project scope, including the "All projects" row. */
+  projectFilter: Schema.Array(DesktopTouchBarChoiceSchema),
+  run: Schema.NullOr(
+    Schema.Struct({
+      label: Schema.String,
+      state: DesktopTouchBarRunStateSchema,
+    }),
+  ),
+});
+export type DesktopTouchBarState = typeof DesktopTouchBarStateSchema.Type;
+
+/**
+ * A Touch Bar tap, pushed to the renderer. `run-toggle` rather than separate
+ * run and stop: the renderer reads live state when the tap lands, so a strip
+ * that is a moment stale cannot start what the user meant to stop.
+ */
+export const DesktopTouchBarActionSchema = Schema.Union([
+  Schema.Struct({
+    kind: Schema.Literal("select-provider"),
+    instanceId: Schema.String.check(Schema.isTrimmed()).check(Schema.isNonEmpty()),
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("open-project"),
+    key: Schema.String.check(Schema.isTrimmed()).check(Schema.isNonEmpty()),
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("filter-project"),
+    key: Schema.String.check(Schema.isTrimmed()).check(Schema.isNonEmpty()),
+  }),
+  Schema.Struct({ kind: Schema.Literal("toggle-sidebar") }),
+  Schema.Struct({ kind: Schema.Literal("toggle-terminal") }),
+  Schema.Struct({ kind: Schema.Literal("new-project") }),
+  Schema.Struct({ kind: Schema.Literal("new-thread") }),
+  Schema.Struct({ kind: Schema.Literal("run-toggle") }),
+]);
+export type DesktopTouchBarAction = typeof DesktopTouchBarActionSchema.Type;
+
+/**
  * A System Settings pane the app can deep-link to. The identifier crosses IPC
  * rather than a URL, so the renderer can only reach these known destinations.
  */
@@ -1256,6 +1361,17 @@ export interface DesktopBridge {
    * Electron desktop build; web builds have `preview === undefined`.
    */
   preview?: DesktopPreviewBridge;
+  /**
+   * macOS Touch Bar strip. Present iff the desktop shell knows about it, so
+   * a newer web client hosted by an older shell simply renders no strip.
+   * `setState(null)` detaches the bar.
+   */
+  touchBar?: {
+    /** Register the provider glyphs once, before the first `setState`. */
+    setIcons: (icons: DesktopTouchBarIcons) => Promise<void>;
+    setState: (state: DesktopTouchBarState | null) => Promise<void>;
+    onAction: (listener: (action: DesktopTouchBarAction) => void) => () => void;
+  };
 }
 
 /** Renderer callback invoked by Electron with a fresh user gesture before display-media capture. */

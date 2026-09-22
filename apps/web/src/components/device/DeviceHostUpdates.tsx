@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Button } from "~/components/ui/button";
 import { deviceEnvironment } from "~/state/device";
 import { useAtomCommand } from "~/state/use-atom-command";
+import { cn } from "~/lib/utils";
 
 /** Shared by setup, Settings, and the Device panel so automatic updates stay visible. */
 export function DeviceHostUpdates({
@@ -25,11 +26,19 @@ export function DeviceHostUpdates({
           <div
             key={host.id}
             role={failed ? "alert" : "status"}
-            className="flex items-start gap-3 rounded-md border border-border/60 px-3 py-2 text-xs"
+            className={cn(
+              "flex items-start gap-3 rounded-md border px-3 py-2 text-xs",
+              failed ? "border-destructive/50 bg-destructive/5" : "border-border/60",
+            )}
           >
             <div className="min-w-0 flex-1">
-              <p className="font-medium">{host.label}</p>
-              <p className="whitespace-pre-wrap break-words text-muted-foreground">
+              <p className={cn("font-medium", failed && "text-destructive")}>{host.label}</p>
+              <p
+                className={cn(
+                  "whitespace-pre-wrap break-words",
+                  failed ? "text-destructive" : "text-muted-foreground",
+                )}
+              >
                 {status.detail ??
                   (failed
                     ? "Device support could not start."
@@ -44,16 +53,20 @@ export function DeviceHostUpdates({
                 </p>
               ) : null}
             </div>
-            {failed && state.supportsHostRetry ? (
+            {failed ? (
               <Button
                 size="compact"
                 variant="outline"
                 disabled={pending !== null}
                 onClick={() => {
                   setPending(host.id);
-                  void retry({ environmentId, input: { retryHostId: host.id } }).finally(() =>
-                    setPending(null),
-                  );
+                  // An environment too old to advertise per-host retry still
+                  // re-runs readiness for every host on a plain list, so the
+                  // way out of a failure never depends on the capability.
+                  void retry({
+                    environmentId,
+                    input: state.supportsHostRetry ? { retryHostId: host.id } : {},
+                  }).finally(() => setPending(null));
                 }}
               >
                 {pending === host.id ? "Retrying…" : "Retry"}

@@ -22,7 +22,6 @@ import { cn } from "~/lib/utils";
 import { commitGraphEnvironment } from "~/state/commitGraph";
 import { useEnvironmentQuery } from "~/state/query";
 import { useAtomCommand } from "~/state/use-atom-command";
-import { useTheme } from "~/hooks/useTheme";
 import { vcsEnvironment } from "~/state/vcs";
 import { formatRelativeTimeLabel } from "../../timestampFormat";
 import { PierreEntryIcon } from "../chat/PierreEntryIcon";
@@ -30,6 +29,7 @@ import { Button } from "../ui/button";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
 import { RefreshIcon } from "../ui/refresh-icon";
 import { ScrollArea } from "../ui/scroll-area";
+import { Spinner } from "../ui/spinner";
 import { Textarea } from "../ui/textarea";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { CommitGraphLanes, GRAPH_ROW_HEIGHT, graphWidth } from "./CommitGraphLanes";
@@ -69,6 +69,21 @@ const STATUS_CLASS: Record<CommitGraphFileChange["status"], string> = {
 };
 
 const isCommitFailure = Schema.is(WorkingCopyCommitFailedError);
+
+/**
+ * Suggestion failures are ordinary (no changes to describe, no writer model
+ * configured, the provider refused), so they are shown in the commit box
+ * rather than dropped. Server errors carry `detail`; anything else falls back
+ * to its message.
+ */
+function describeSuggestionFailure(failure: unknown): string {
+  if (typeof failure === "object" && failure !== null) {
+    const { detail, message } = failure as { detail?: unknown; message?: unknown };
+    if (typeof detail === "string" && detail.length > 0) return detail;
+    if (typeof message === "string" && message.length > 0) return message;
+  }
+  return "Couldn't generate a commit message.";
+}
 
 function fileName(path: string): string {
   return path.slice(path.lastIndexOf("/") + 1);
@@ -114,7 +129,6 @@ function FileRow({
   readonly onOpen?: () => void;
   readonly isOpen?: boolean;
 }) {
-  const { resolvedTheme } = useTheme();
   return (
     <div
       className={cn(
@@ -130,12 +144,7 @@ function FileRow({
         onClick={onOpen}
         disabled={onOpen === undefined}
       >
-        <PierreEntryIcon
-          pathValue={file.path}
-          kind="file"
-          theme={resolvedTheme}
-          className="size-4"
-        />
+        <PierreEntryIcon pathValue={file.path} kind="file" className="size-4" />
         <span
           className={cn(
             "truncate text-sm",
@@ -255,7 +264,9 @@ export function SourceControlPanel({
   const [expandedSha, setExpandedSha] = useState<string | null>(null);
   const [openPath, setOpenPath] = useState<string | null>(null);
   const [commitFailure, setCommitFailure] = useState<WorkingCopyCommitFailedError | null>(null);
+  const [suggestionFailure, setSuggestionFailure] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [generating, setGenerating] = useState(false);
 
   const commitsQuery = useEnvironmentQuery(
     commitGraphEnvironment.commits({ environmentId, input: { cwd, limit } }),
@@ -353,15 +364,19 @@ export function SourceControlPanel({
   };
 
   const generateMessage = async () => {
-    setBusy(true);
+    if (generating) return;
+    setGenerating(true);
+    setSuggestionFailure(null);
     const result = await suggestMessage({
       environmentId,
       input: { cwd, ...(threadId === null ? {} : { threadId }) },
     });
-    setBusy(false);
-    if (result._tag === "Success") {
-      setMessage(result.value.message);
+    setGenerating(false);
+    if (result._tag === "Failure") {
+      setSuggestionFailure(describeSuggestionFailure(squashAtomCommandFailure(result)));
+      return;
     }
+    setMessage(result.value.message);
   };
 
   const toggleCommit = (sha: string) => {
@@ -416,16 +431,16 @@ export function SourceControlPanel({
           <Button
             size="xs"
             variant="ghost"
-            disabled={busy || !hasChanges}
+            disabled={busy || generating || !hasChanges}
             onClick={() => void generateMessage()}
           >
-            <SparklesIcon className="size-3.5" />
-            Generate
+            {generating ? <Spinner className="size-3.5" /> : <SparklesIcon className="size-3.5" />}
+            {generating ? "Generating…" : "Generate"}
           </Button>
           <div className="flex-1" />
           <Button
             size="xs"
-            disabled={busy || message.trim().length === 0 || !hasChanges}
+            disabled={busy || generating || message.trim().length === 0 || !hasChanges}
             onClick={() => void runCommit(false)}
           >
             Commit
@@ -438,7 +453,7 @@ export function SourceControlPanel({
             </MenuTrigger>
             <MenuPopup align="end">
               <MenuItem
-                disabled={busy || message.trim().length === 0 || !hasChanges}
+                disabled={busy || generating || message.trim().length === 0 || !hasChanges}
                 onClick={() => void runCommit(true)}
               >
                 Commit &amp; Push
@@ -450,6 +465,11 @@ export function SourceControlPanel({
           <p className="text-muted-foreground text-xs">
             An agent is working in this thread. Committing now includes whatever it has written so
             far.
+          </p>
+        )}
+        {suggestionFailure && (
+          <p className="rounded-sm border border-destructive/40 bg-destructive/5 px-2 py-1 text-destructive text-xs">
+            {suggestionFailure}
           </p>
         )}
         {commitFailure && (

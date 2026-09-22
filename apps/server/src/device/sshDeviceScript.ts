@@ -1,5 +1,9 @@
 import { deviceToolMaintenanceScript } from "./deviceToolMaintenance.ts";
-import { AGENT_DEVICE_VERSION, DEVICE_HUB_VERSION } from "./DeviceToolchain.ts";
+import {
+  AGENT_DEVICE_VERSION,
+  DEVICE_HUB_SCRCPY_VERSION,
+  DEVICE_HUB_VERSION,
+} from "./DeviceToolchain.ts";
 
 export const quoteRemoteArg = (value: string) => `'${value.replaceAll("'", "'\"'\"'")}'`;
 
@@ -28,6 +32,7 @@ const owner = ${JSON.stringify(owner)};
 const mode = ${JSON.stringify(mode)};
 const hubVersion = ${JSON.stringify(DEVICE_HUB_VERSION)};
 const agentVersion = ${JSON.stringify(AGENT_DEVICE_VERSION)};
+const scrcpyVersion = ${JSON.stringify(DEVICE_HUB_SCRCPY_VERSION)};
 ` +
   deviceToolMaintenanceScript +
   String.raw`
@@ -218,7 +223,8 @@ async function install(name, version, entry) {
   const optional = file => fs.existsSync(file) ? file : null;
   await pruneTools(path.join(root, 'tools'), [['expo-device-hub', hubVersion], ...(mode === 'agent-start' ? [['agent-device', agentVersion]] : [])], true).catch(() => {});
   console.log(JSON.stringify({ nodePath: process.execPath, platforms, tools: versions(), hubPort: hub.port, ...agentResult,
-    helpers: { serveSimAxSettings: optional(path.join(vendor, 'simax/serve-sim-ax-settings')), serveSimCli: optional(path.join(vendor, 'serve-sim.js')) } }));
+    helpers: { serveSimAxSettings: optional(path.join(vendor, 'simax/serve-sim-ax-settings')), serveSimCli: optional(path.join(vendor, 'serve-sim.js')),
+      scrcpyServer: path.resolve(path.dirname(hubEntry), '../../vendor/serve-emu/vendor/scrcpy-server-v' + scrcpyVersion) } }));
   } finally { releaseHost(); }
 })().catch(error => { console.error(error.message); process.exitCode = 1; });
 `;

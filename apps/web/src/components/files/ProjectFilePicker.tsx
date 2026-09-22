@@ -2,7 +2,6 @@ import { useAtomValue } from "@effect/atom-react";
 import { useMemo, useState, type ReactNode } from "react";
 
 import { useActiveProjectTarget, type ActiveProjectTarget } from "~/hooks/useActiveProjectTarget";
-import { useTheme } from "~/hooks/useTheme";
 import { useRightPanelStore } from "~/rightPanelStore";
 import { primaryServerKeybindingsAtom } from "~/state/server";
 
@@ -78,7 +77,6 @@ function OpenProjectFilePicker(props: ProjectFilePickerProps & { target: ActiveP
     query,
     PROJECT_FILE_PICKER_RESULT_LIMIT,
   );
-  const { resolvedTheme } = useTheme();
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
   const matches = useMemo(
     () => getProjectFilePickerMatches(result.entries, result.matchedQuery),
@@ -105,12 +103,12 @@ function OpenProjectFilePicker(props: ProjectFilePickerProps & { target: ActiveP
             indices={match.pathMatchIndices}
           />
         ),
-        icon: <PierreEntryIcon pathValue={match.path} kind="file" theme={resolvedTheme} />,
+        icon: <PierreEntryIcon pathValue={match.path} kind="file" />,
         run: async () => {
           useRightPanelStore.getState().openFile(target.threadRef, match.path);
         },
       })),
-    [hasMatchedQuery, matches, resolvedTheme, target.threadRef],
+    [hasMatchedQuery, matches, target.threadRef],
   );
 
   const emptyStateMessage = getEmptyStateMessage(query, result.error, result.isPending);

@@ -20,8 +20,10 @@ import {
   ChevronLeft,
   ChevronRight,
   FileDiff,
+  GitBranch,
   Files,
   Globe2,
+  Play,
   Plus,
   TerminalSquare,
   Volume2,
@@ -122,6 +124,8 @@ interface RightPanelTabsProps {
   onAddPullRequests: () => void;
   onAddAgents: () => void;
   onAddDevice: () => void;
+  onAddLaunch: () => void;
+  onAddCommitGraph: () => void;
   browserAvailable: boolean;
   terminalAvailable: boolean;
   diffAvailable: boolean;
@@ -130,6 +134,8 @@ interface RightPanelTabsProps {
   pullRequestsAvailable: boolean;
   agentsAvailable: boolean;
   deviceAvailable: boolean;
+  launchAvailable: boolean;
+  commitGraphAvailable: boolean;
   pullRequestStatusSeeds?: Readonly<Record<string, PullRequestTabStatusSeed>>;
   /** Running + waiting subagents; badges the Agents card in the empty state. */
   liveAgentCount: number;
@@ -161,6 +167,8 @@ const SURFACE_DISABLED_REASONS = {
   pullRequests: "No linked pull requests are available for this thread.",
   agents: "Agents are only available from a thread.",
   device: "Devices are only available from a thread.",
+  launch: "Run & Debug is only available when a project is open.",
+  commitGraph: "Source Control is only available for threads in Git repositories.",
 } as const;
 
 /** Overlays that must win over the launcher's letter shortcuts. */
@@ -185,6 +193,8 @@ const SURFACE_UNAVAILABLE_HINTS = {
   pullRequests: "No linked pull requests available.",
   agents: "Available from a thread.",
   device: "Available from a thread.",
+  launch: "Available when a project is open.",
+  commitGraph: "Available for Git repositories.",
 } as const;
 
 type TabContextMenuAction =
@@ -325,6 +335,8 @@ function RightPanelEmptyState(props: {
   onAddPullRequests: () => void;
   onAddAgents: () => void;
   onAddDevice: () => void;
+  onAddLaunch: () => void;
+  onAddCommitGraph: () => void;
   browserAvailable: boolean;
   terminalAvailable: boolean;
   diffAvailable: boolean;
@@ -333,6 +345,8 @@ function RightPanelEmptyState(props: {
   pullRequestsAvailable: boolean;
   agentsAvailable: boolean;
   deviceAvailable: boolean;
+  launchAvailable: boolean;
+  commitGraphAvailable: boolean;
   liveAgentCount: number;
 }) {
   // -1 means no highlight: it only appears on hover or arrow use.
@@ -410,6 +424,26 @@ function RightPanelEmptyState(props: {
       available: props.deviceAvailable,
       disabledReason: SURFACE_UNAVAILABLE_HINTS.device,
       onClick: props.onAddDevice,
+      badgeCount: 0,
+    },
+    {
+      label: "Run & Debug",
+      description: "Run configurations from .vscode/launch.json.",
+      icon: Play,
+      shortcut: "R",
+      available: props.launchAvailable,
+      disabledReason: SURFACE_UNAVAILABLE_HINTS.launch,
+      onClick: props.onAddLaunch,
+      badgeCount: 0,
+    },
+    {
+      label: "Source Control",
+      description: "Commit graph, staging, and the commit box.",
+      icon: GitBranch,
+      shortcut: "G",
+      available: props.commitGraphAvailable,
+      disabledReason: SURFACE_UNAVAILABLE_HINTS.commitGraph,
+      onClick: props.onAddCommitGraph,
       badgeCount: 0,
     },
   ] as const;
@@ -636,6 +670,10 @@ function surfaceTitle(
       return "Agents";
     case "device":
       return surface.title ?? surface.target?.name ?? "Device";
+    case "launch":
+      return "Run & Debug";
+    case "commit-graph":
+      return "Source Control";
     case "preview": {
       const snapshot = surface.resourceId ? sessions[surface.resourceId] : null;
       if (!snapshot || snapshot.navStatus._tag === "Idle") return "Browser";
@@ -697,14 +735,7 @@ function SurfaceIcon({
     case "files":
       return <Files className="size-3 shrink-0" />;
     case "file":
-      return (
-        <PierreEntryIcon
-          pathValue={surface.relativePath}
-          kind="file"
-          theme={theme}
-          className="size-3"
-        />
-      );
+      return <PierreEntryIcon pathValue={surface.relativePath} kind="file" className="size-3" />;
     case "terminal":
       return <TerminalSquare className="size-3 shrink-0" />;
     case "pull-request":
@@ -727,6 +758,10 @@ function SurfaceIcon({
       ) : (
         <Smartphone className="size-3 shrink-0" />
       );
+    case "launch":
+      return <Play className="size-3 shrink-0" />;
+    case "commit-graph":
+      return <GitBranch className="size-3 shrink-0" />;
   }
 }
 
@@ -936,6 +971,22 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
       available: props.deviceAvailable,
       disabledReason: SURFACE_DISABLED_REASONS.device,
       onClick: props.onAddDevice,
+    },
+    {
+      label: "Run & Debug",
+      icon: Play,
+      shortcut: "R",
+      available: props.launchAvailable,
+      disabledReason: SURFACE_DISABLED_REASONS.launch,
+      onClick: props.onAddLaunch,
+    },
+    {
+      label: "Source Control",
+      icon: GitBranch,
+      shortcut: "G",
+      available: props.commitGraphAvailable,
+      disabledReason: SURFACE_DISABLED_REASONS.commitGraph,
+      onClick: props.onAddCommitGraph,
     },
   ] as const;
 
@@ -1409,6 +1460,8 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
             onAddPullRequests={props.onAddPullRequests}
             onAddAgents={props.onAddAgents}
             onAddDevice={props.onAddDevice}
+            onAddLaunch={props.onAddLaunch}
+            onAddCommitGraph={props.onAddCommitGraph}
             browserAvailable={props.browserAvailable}
             terminalAvailable={props.terminalAvailable}
             diffAvailable={props.diffAvailable}
@@ -1417,6 +1470,8 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
             pullRequestsAvailable={props.pullRequestsAvailable}
             agentsAvailable={props.agentsAvailable}
             deviceAvailable={props.deviceAvailable}
+            launchAvailable={props.launchAvailable}
+            commitGraphAvailable={props.commitGraphAvailable}
             liveAgentCount={props.liveAgentCount}
           />
         ) : (

@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import {
+  androidTextChunks,
   createDeviceStreamClient,
   AvccDemuxer,
   avcCodecString,
@@ -206,6 +207,15 @@ describe("native device stream transport", () => {
       expect(vi.getTimerCount()).toBe(0);
     },
   );
+});
+
+describe("Android paste", () => {
+  it("splits text into 300-byte chunks without cutting a multi-byte character", () => {
+    const text = `${"a".repeat(299)}é${"b".repeat(10)}`;
+    const chunks = [...androidTextChunks(text)];
+    expect(chunks.map((chunk) => new TextEncoder().encode(chunk).length)).toEqual([299, 12]);
+    expect(chunks.join("")).toBe(text);
+  });
 });
 
 describe("serve-emu frames", () => {

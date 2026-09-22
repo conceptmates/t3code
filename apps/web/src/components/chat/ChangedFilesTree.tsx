@@ -30,7 +30,6 @@ export const ChangedFilesCard = memo(function ChangedFilesCard(props: {
   turnId: TurnId;
   files: ReadonlyArray<TurnDiffFileChange>;
   allDirectoriesExpanded: boolean;
-  resolvedTheme: "light" | "dark";
   onToggleAllDirectories: () => void;
   onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void;
   onFileContextMenu?: ChangedFileContextMenuHandler | undefined;
@@ -39,7 +38,6 @@ export const ChangedFilesCard = memo(function ChangedFilesCard(props: {
     turnId,
     files,
     allDirectoriesExpanded,
-    resolvedTheme,
     onToggleAllDirectories,
     onOpenTurnDiff,
     onFileContextMenu,
@@ -121,7 +119,6 @@ export const ChangedFilesCard = memo(function ChangedFilesCard(props: {
         turnId={turnId}
         files={files}
         allDirectoriesExpanded={allDirectoriesExpanded}
-        resolvedTheme={resolvedTheme}
         onOpenTurnDiff={onOpenTurnDiff}
         onFileContextMenu={onFileContextMenu}
       />
@@ -133,18 +130,10 @@ export const ChangedFilesTree = memo(function ChangedFilesTree(props: {
   turnId: TurnId;
   files: ReadonlyArray<TurnDiffFileChange>;
   allDirectoriesExpanded: boolean;
-  resolvedTheme: "light" | "dark";
   onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void;
   onFileContextMenu?: ChangedFileContextMenuHandler | undefined;
 }) {
-  const {
-    files,
-    allDirectoriesExpanded,
-    onOpenTurnDiff,
-    resolvedTheme,
-    turnId,
-    onFileContextMenu,
-  } = props;
+  const { files, allDirectoriesExpanded, onOpenTurnDiff, turnId, onFileContextMenu } = props;
   const treeNodes = useMemo(() => buildTurnDiffTree(files), [files]);
   const directoryPathsKey = useMemo(
     () => collectDirectoryPaths(treeNodes).join("\u0000"),
@@ -244,7 +233,6 @@ export const ChangedFilesTree = memo(function ChangedFilesTree(props: {
         <PierreEntryIcon
           pathValue={node.path}
           kind="file"
-          theme={resolvedTheme}
           className="size-3.5 text-muted-foreground/70"
         />
         <MiddleTruncate

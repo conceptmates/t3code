@@ -532,6 +532,9 @@ export function useSettingsRestore(onRestored?: () => void) {
       ...(settings.diffColorScheme !== DEFAULT_UNIFIED_SETTINGS.diffColorScheme
         ? ["Diff colors"]
         : []),
+      ...(settings.sidebarProjectColorGroups !== DEFAULT_UNIFIED_SETTINGS.sidebarProjectColorGroups
+        ? ["Project color groups"]
+        : []),
       ...(settings.panelAnimationDurationMs !== DEFAULT_UNIFIED_SETTINGS.panelAnimationDurationMs
         ? ["Panel animations"]
         : []),
@@ -586,6 +589,12 @@ export function useSettingsRestore(onRestored?: () => void) {
       ...(settings.sendShortcut !== DEFAULT_UNIFIED_SETTINGS.sendShortcut ? ["Send shortcut"] : []),
       ...(settings.followUpBehavior !== DEFAULT_UNIFIED_SETTINGS.followUpBehavior
         ? ["Follow-up behavior"]
+        : []),
+      ...(settings.composerUsageRowEnabled !== DEFAULT_UNIFIED_SETTINGS.composerUsageRowEnabled
+        ? ["Usage under composer"]
+        : []),
+      ...(settings.touchBarEnabled !== DEFAULT_UNIFIED_SETTINGS.touchBarEnabled
+        ? ["Touch Bar"]
         : []),
       ...(settings.contextWindowMeterEnabled !== DEFAULT_UNIFIED_SETTINGS.contextWindowMeterEnabled
         ? ["Context window indicator"]
@@ -650,6 +659,8 @@ export function useSettingsRestore(onRestored?: () => void) {
       settings.composerRichTextEnabled,
       settings.sendShortcut,
       settings.followUpBehavior,
+      settings.composerUsageRowEnabled,
+      settings.touchBarEnabled,
       settings.addProjectBaseDirectory,
       settings.defaultThreadEnvMode,
       settings.newWorktreesStartFromOrigin,
@@ -762,12 +773,15 @@ export function useSettingsRestore(onRestored?: () => void) {
       proactivePanelsEnabled: DEFAULT_UNIFIED_SETTINGS.proactivePanelsEnabled,
       showSkillsInSlashMenu: DEFAULT_UNIFIED_SETTINGS.showSkillsInSlashMenu,
       composerCollapseOnScroll: DEFAULT_UNIFIED_SETTINGS.composerCollapseOnScroll,
+      composerUsageRowEnabled: DEFAULT_UNIFIED_SETTINGS.composerUsageRowEnabled,
+      touchBarEnabled: DEFAULT_UNIFIED_SETTINGS.touchBarEnabled,
       composerRichTextEnabled: DEFAULT_UNIFIED_SETTINGS.composerRichTextEnabled,
       sendShortcut: DEFAULT_UNIFIED_SETTINGS.sendShortcut,
       followUpBehavior: DEFAULT_UNIFIED_SETTINGS.followUpBehavior,
       contextWindowMeterEnabled: DEFAULT_UNIFIED_SETTINGS.contextWindowMeterEnabled,
       environmentIdentificationMode: DEFAULT_UNIFIED_SETTINGS.environmentIdentificationMode,
       glassOpacity: DEFAULT_UNIFIED_SETTINGS.glassOpacity,
+      sidebarProjectColorGroups: DEFAULT_UNIFIED_SETTINGS.sidebarProjectColorGroups,
       panelAnimationDurationMs: DEFAULT_UNIFIED_SETTINGS.panelAnimationDurationMs,
       sidebarThreadPreviewCount: DEFAULT_UNIFIED_SETTINGS.sidebarThreadPreviewCount,
       sidebarProjectGroupingMode: DEFAULT_UNIFIED_SETTINGS.sidebarProjectGroupingMode,
@@ -1381,6 +1395,32 @@ export function AppearanceSettingsPanel() {
                 </SelectPopup>
               </Select>
             </div>
+          }
+        />
+        <SettingsRow
+          {...searchableSetting("sidebar-project-color-groups")}
+          description="Group pinned and active threads in the sidebar by project, with a color for each project."
+          resetAction={
+            settings.sidebarProjectColorGroups !==
+            DEFAULT_UNIFIED_SETTINGS.sidebarProjectColorGroups ? (
+              <SettingResetButton
+                label="project color groups"
+                onClick={() =>
+                  updateSettings({
+                    sidebarProjectColorGroups: DEFAULT_UNIFIED_SETTINGS.sidebarProjectColorGroups,
+                  })
+                }
+              />
+            ) : null
+          }
+          control={
+            <Switch
+              checked={settings.sidebarProjectColorGroups}
+              onCheckedChange={(checked) =>
+                updateSettings({ sidebarProjectColorGroups: Boolean(checked) })
+              }
+              aria-label="Project color groups"
+            />
           }
         />
       </SettingsSection>
@@ -2101,6 +2141,9 @@ function LegacyFeaturesSection() {
 
 export function GeneralSettingsPanel() {
   const modifierLabel = isMacPlatform(navigator.platform) ? "⌘" : "Ctrl";
+  // Only a macOS desktop shell can carry a Touch Bar, so nothing else offers
+  // the switch. Machines without the hardware simply never show a strip.
+  const isMacosDesktop = isElectron && isMacPlatform(navigator.platform);
   const sendShortcutOptions = [
     { value: "enter", label: "Enter" },
     { value: "mod-enter-multiline", label: `${modifierLabel} + Enter for multiline prompts` },
@@ -2729,6 +2772,57 @@ export function GeneralSettingsPanel() {
             </Select>
           }
         />
+
+        <SettingsRow
+          {...searchableSetting("composer-usage-row")}
+          description="Show context use, skills used, and the provider's 5-hour and weekly limits under the composer."
+          resetAction={
+            settings.composerUsageRowEnabled !==
+            DEFAULT_UNIFIED_SETTINGS.composerUsageRowEnabled ? (
+              <SettingResetButton
+                label="usage under composer"
+                onClick={() =>
+                  updateSettings({
+                    composerUsageRowEnabled: DEFAULT_UNIFIED_SETTINGS.composerUsageRowEnabled,
+                  })
+                }
+              />
+            ) : null
+          }
+          control={
+            <Switch
+              checked={settings.composerUsageRowEnabled}
+              onCheckedChange={(checked) =>
+                updateSettings({ composerUsageRowEnabled: Boolean(checked) })
+              }
+              aria-label="Usage under composer"
+            />
+          }
+        />
+
+        {isMacosDesktop ? (
+          <SettingsRow
+            {...searchableSetting("touch-bar")}
+            description="Show a Touch Bar strip with each provider's 5-hour usage, the primary launch config, and the running turn. Run & Debug replaces the Escape key while T3 Code is in front."
+            resetAction={
+              settings.touchBarEnabled !== DEFAULT_UNIFIED_SETTINGS.touchBarEnabled ? (
+                <SettingResetButton
+                  label="Touch Bar"
+                  onClick={() =>
+                    updateSettings({ touchBarEnabled: DEFAULT_UNIFIED_SETTINGS.touchBarEnabled })
+                  }
+                />
+              ) : null
+            }
+            control={
+              <Switch
+                checked={settings.touchBarEnabled}
+                onCheckedChange={(checked) => updateSettings({ touchBarEnabled: Boolean(checked) })}
+                aria-label="Touch Bar"
+              />
+            }
+          />
+        ) : null}
 
         <SettingsRow
           serverScoped

@@ -226,11 +226,7 @@ function ComposerMentionNodeView({ node }: NodeViewProps) {
       spellCheck={false}
       data-composer-mention-chip="true"
     >
-      <FileTagChipContent
-        path={path}
-        label={basenameOfPath(path)}
-        theme={resolvedThemeFromDocument()}
-      />
+      <FileTagChipContent path={path} label={basenameOfPath(path)} />
     </Button>
   );
   return (

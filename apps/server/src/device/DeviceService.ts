@@ -12,6 +12,9 @@
  */
 import {
   type DeviceActionInput,
+  type DeviceAdbPairInput,
+  type DeviceAdbPairingError,
+  type DeviceAdbPairResult,
   type DeviceCloseInput,
   type DeviceConfigureInput,
   type DeviceDetail,
@@ -38,6 +41,7 @@ import {
 import * as FileSystem from "effect/FileSystem";
 import { resolveNodeExecutable, nodeRuntimeUnavailableMessage } from "@t3tools/shared/nodeRuntime";
 import * as Path from "effect/Path";
+import { pairAndroidDevice } from "./AndroidWirelessPairing.ts";
 import { ensureAgentDevice, ensureDeviceHub } from "./DeviceToolchain.ts";
 import * as ServerConfig from "../config.ts";
 import {
@@ -136,6 +140,10 @@ export class DeviceService extends Context.Service<
     readonly detail: (input: DeviceDetailInput) => Effect.Effect<DeviceDetail, DeviceError>;
     /** Runs one action, then returns the refreshed detail. */
     readonly action: (input: DeviceActionInput) => Effect.Effect<DeviceDetail, DeviceError>;
+    /** Pairs or connects an Android phone for wireless debugging with the host's adb. */
+    readonly adbPair: (
+      input: DeviceAdbPairInput,
+    ) => Effect.Effect<DeviceAdbPairResult, DeviceError | DeviceAdbPairingError>;
     readonly screenshot: (input: {
       readonly hostId?: DeviceHostId | undefined;
       readonly deviceId: DeviceId;
@@ -154,6 +162,11 @@ export class DeviceService extends Context.Service<
     ) => Effect.Effect<DeviceAgentReadiness | null, DeviceError>;
     readonly currentReadiness: (hostId?: DeviceHostId) => Effect.Effect<DeviceReadiness | null>;
     readonly sessionsForThread: (threadId: ThreadId) => Effect.Effect<ReadonlyArray<DeviceSession>>;
+    /**
+     * Variables naming the device a thread targets, for its shells and agents.
+     * Empty when the thread has no device open.
+     */
+    readonly threadDeviceEnvironment: (threadId: ThreadId) => Effect.Effect<Record<string, string>>;
   }
 >()("t3/device/DeviceService") {}
 
@@ -894,9 +907,40 @@ export const makeWithHosts = Effect.fn("DeviceService.makeWithHosts")(function* 
     },
   );
 
+  const adbPair: DeviceService["Service"]["adbPair"] = Effect.fn("DeviceService.adbPair")(
+    function* (input) {
+      const host = yield* resolveHost(input.hostId);
+      yield* ensurePlatform(host, "android");
+      const ready = yield* readiness(host.id);
+      const serial = yield* pairAndroidDevice(ready.run, input);
+      // The phone is connected either way; a slow listing must not fail the pairing.
+      yield* refresh(ready).pipe(
+        Effect.catch((cause) =>
+          Effect.logWarning("Device discovery unavailable after pairing", { cause }),
+        ),
+      );
+      return { hostId: host.id, serial };
+    },
+  );
+
   const sessionsForThread: DeviceService["Service"]["sessionsForThread"] = (threadId) =>
     SynchronizedRef.get(stateRef).pipe(
       Effect.map(({ state }) => state.sessions.filter((session) => session.threadId === threadId)),
+    );
+
+  const threadDeviceEnvironment: DeviceService["Service"]["threadDeviceEnvironment"] = (threadId) =>
+    sessionsForThread(threadId).pipe(
+      Effect.map((sessions) => {
+        const session = sessions[0];
+        if (!session) return {};
+        return {
+          T3CODE_DEVICE_ID: session.deviceId,
+          T3CODE_DEVICE_PLATFORM: session.platform,
+          // adb reads ANDROID_SERIAL, so plain adb commands and
+          // `flutter run -d "$ANDROID_SERIAL"` reach the chosen phone.
+          ...(session.platform === "android" ? { ANDROID_SERIAL: session.deviceId } : {}),
+        };
+      }),
     );
 
   return {
@@ -961,6 +1005,8 @@ export const makeWithHosts = Effect.fn("DeviceService.makeWithHosts")(function* 
       shutdown,
       detail,
       action,
+      adbPair,
+      threadDeviceEnvironment,
       screenshot,
       readiness,
       readinessIfSupported,

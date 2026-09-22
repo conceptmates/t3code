@@ -2140,7 +2140,7 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
             {unchippedFiles.map((file) => {
               const fileIdentity = (
                 <>
-                  <PierreEntryIcon pathValue={file.name} kind="file" theme={ctx.resolvedTheme} />
+                  <PierreEntryIcon pathValue={file.name} kind="file" />
                   <span className="min-w-0 flex-1 truncate">{file.name}</span>
                 </>
               );
@@ -2183,11 +2183,7 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
             })}
             {unknownAttachments.map((attachment) => (
               <div key={attachment.id} className="flex min-w-0 items-center gap-2 py-1 text-sm">
-                <PierreEntryIcon
-                  pathValue={attachment.name}
-                  kind="file"
-                  theme={ctx.resolvedTheme}
-                />
+                <PierreEntryIcon pathValue={attachment.name} kind="file" />
                 <span className="min-w-0 flex-1 truncate">{attachment.name}</span>
               </div>
             ))}
@@ -2387,7 +2383,6 @@ function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "mess
         <AssistantChangedFilesSection
           turnSummary={row.assistantTurnDiffSummary}
           routeThreadKey={ctx.routeThreadKey}
-          resolvedTheme={ctx.resolvedTheme}
           onOpenTurnDiff={ctx.onOpenTurnDiff}
         />
         {row.showAssistantMeta ? (
@@ -3357,12 +3352,10 @@ function WorkGroupToggleTimelineRow({
 const AssistantChangedFilesSection = memo(function AssistantChangedFilesSection({
   turnSummary,
   routeThreadKey,
-  resolvedTheme,
   onOpenTurnDiff,
 }: {
   turnSummary: TurnDiffSummary | undefined;
   routeThreadKey: string;
-  resolvedTheme: "light" | "dark";
   onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void;
 }) {
   if (!turnSummary) return null;
@@ -3374,7 +3367,6 @@ const AssistantChangedFilesSection = memo(function AssistantChangedFilesSection(
       turnSummary={turnSummary}
       checkpointFiles={checkpointFiles}
       routeThreadKey={routeThreadKey}
-      resolvedTheme={resolvedTheme}
       onOpenTurnDiff={onOpenTurnDiff}
     />
   );
@@ -3386,13 +3378,11 @@ function AssistantChangedFilesSectionInner({
   turnSummary,
   checkpointFiles,
   routeThreadKey,
-  resolvedTheme,
   onOpenTurnDiff,
 }: {
   turnSummary: TurnDiffSummary;
   checkpointFiles: TurnDiffSummary["files"];
   routeThreadKey: string;
-  resolvedTheme: "light" | "dark";
   onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void;
 }) {
   const ctx = use(TimelineRowCtx);
@@ -3418,7 +3408,6 @@ function AssistantChangedFilesSectionInner({
       turnId={turnSummary.turnId}
       files={checkpointFiles}
       allDirectoriesExpanded={allDirectoriesExpanded}
-      resolvedTheme={resolvedTheme}
       onToggleAllDirectories={() =>
         setExpanded(routeThreadKey, turnSummary.turnId, !allDirectoriesExpanded)
       }
@@ -3471,7 +3460,6 @@ function UserMessageMentionChip(props: {
             <PierreEntryIcon
               pathValue={props.record.path}
               kind={inferEntryKindFromPath(props.record.path)}
-              theme={ctx.resolvedTheme}
               className={COMPOSER_INLINE_CHIP_ICON_CLASS_NAME}
             />
             <span className={CHAT_INLINE_CHIP_LABEL_CLASS_NAME}>{props.record.label}</span>
@@ -3777,7 +3765,6 @@ const userMessageContextPresentationRegistry = createContextPresentationRegistry
             name={record.name}
             size={size}
             isVideo={isVideo}
-            theme={context.resolvedTheme}
             className={CHAT_INLINE_CHIP_CLASS_NAME}
             labelClassName={CHAT_INLINE_CHIP_LABEL_CLASS_NAME}
             disabled={disabled}

@@ -473,7 +473,11 @@ function appendNode(
           ...context,
           href: node.href,
           fileIcon:
-            reference.kind === "image" ? "image" : reference.kind === "terminal" ? "bash" : "text",
+            reference.kind === "image"
+              ? "image"
+              : reference.kind === "terminal"
+                ? "console"
+                : "document",
         });
         runs.push(...referenceRuns);
         return runs;

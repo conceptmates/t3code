@@ -890,7 +890,7 @@ function MarkdownCodeBlockTitleContent({
   if (fenceTitle) {
     return (
       <>
-        <PierreEntryIcon pathValue={fenceTitle} kind="file" theme={theme} className="size-3.5" />
+        <PierreEntryIcon pathValue={fenceTitle} kind="file" className="size-3.5" />
         <span className="truncate">{fenceTitle}</span>
       </>
     );
@@ -907,7 +907,7 @@ function MarkdownCodeBlockTitleContent({
           <span className="inline-flex shrink-0 rounded-sm" aria-label={`Language: ${language}`} />
         }
       >
-        <PierreEntryIcon pathValue={fileName} kind="file" theme={theme} className="size-3.5" />
+        <PierreEntryIcon pathValue={fileName} kind="file" className="size-3.5" />
       </TooltipTrigger>
       <TooltipPopup side="top">{language}</TooltipPopup>
     </Tooltip>
@@ -2187,7 +2187,7 @@ const MarkdownFileLink = memo(function MarkdownFileLink({
               }}
               onContextMenu={handleContextMenu}
             >
-              <FileTagChipContent path={iconPath} label={label} theme={theme} selectable />
+              <FileTagChipContent path={iconPath} label={label} selectable />
             </a>
           ) : (
             <button
@@ -2204,7 +2204,7 @@ const MarkdownFileLink = memo(function MarkdownFileLink({
               onClick={handleContextMenu}
               onContextMenu={handleContextMenu}
             >
-              <FileTagChipContent path={iconPath} label={label} theme={theme} selectable />
+              <FileTagChipContent path={iconPath} label={label} selectable />
             </button>
           )
         }

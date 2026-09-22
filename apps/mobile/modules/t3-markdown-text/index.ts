@@ -1,6 +1,7 @@
 export { markdownFileIconSource } from "./src/markdownFileIcons";
 export {
   resolveMarkdownFileIcon,
+  resolveMarkdownFolderIcon,
   resolveMarkdownLinkPresentation,
   type MarkdownFileIcon,
   type MarkdownLinkPresentation,

@@ -149,6 +149,22 @@
       "name": "Expo text editor implementation",
       "noticeFile": "apps/mobile/modules/t3-composer-editor/LICENSE",
       "sourceUrl": "https://github.com/expo/expo"
+    },
+    {
+      "bundles": ["assets", "desktop", "web", "mobile"],
+      "license": "MIT",
+      "name": "material-icon-theme",
+      "sourceUrl": "https://github.com/material-extensions/vscode-material-icon-theme",
+      "version": "5.38.1",
+      "generatedNotices": [
+        {
+          "licenseId": "MIT",
+          "copyrights": ["Copyright (c) 2025 Material Extensions"],
+          "preamble": [
+            "The bundled file and folder icons are generated from Material Icon Theme artwork."
+          ]
+        }
+      ]
     }
   ],
   "packageOverrides": [

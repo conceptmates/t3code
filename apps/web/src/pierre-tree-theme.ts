@@ -11,6 +11,25 @@ export const PIERRE_TREE_UNSAFE_CSS = `
     --trees-font-size-override: 12px;
   }
   button[data-type='item'] { border-radius: 5px; }
+
+  /*
+   * The entry-icon lane our @pierre/trees patch adds. The chevron keeps the
+   * built-in icon lane so the lib's rotation rules still match it; this column
+   * carries the file or folder glyph, and every row has one, so names line up
+   * whether or not the row can expand.
+   */
+  [data-item-section='entry-icon'] {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    width: var(--trees-icon-width);
+    margin-inline-end: 4px;
+  }
+  [data-item-section='entry-icon'] svg {
+    width: 16px;
+    height: 16px;
+  }
 `;
 
 /** Host styles that keep a Pierre tree on the active color scheme and foreground. */

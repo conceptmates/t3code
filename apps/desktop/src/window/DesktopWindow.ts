@@ -8,7 +8,11 @@ import * as Ref from "effect/Ref";
 
 import * as Electron from "electron";
 
-import { type DesktopSnapShotEvent, DEFAULT_CLIENT_SETTINGS } from "@t3tools/contracts";
+import {
+  type DesktopSnapShotEvent,
+  type DesktopTouchBarAction,
+  DEFAULT_CLIENT_SETTINGS,
+} from "@t3tools/contracts";
 
 import * as DesktopAssets from "../app/DesktopAssets.ts";
 import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
@@ -22,6 +26,7 @@ import {
   MENU_ACTION_CHANNEL,
   QUIT_SHORTCUT_CHANNEL,
   SNAP_SHOT_EVENT_CHANNEL,
+  TOUCH_BAR_ACTION_CHANNEL,
   WINDOW_FULLSCREEN_STATE_CHANNEL,
 } from "../ipc/channels.ts";
 import * as PreviewManager from "../preview/Manager.ts";
@@ -127,6 +132,14 @@ export class DesktopWindow extends Context.Service<
      */
     readonly dispatchSnapShotEvent: (
       event: DesktopSnapShotEvent,
+    ) => Effect.Effect<void, DesktopWindowError>;
+    /**
+     * Push a Touch Bar tap to the renderer. Never reveals: the user is already
+     * looking at the machine, and stealing focus from another app because a
+     * finger brushed the strip would be hostile.
+     */
+    readonly dispatchTouchBarAction: (
+      action: DesktopTouchBarAction,
     ) => Effect.Effect<void, DesktopWindowError>;
     // Zooms the main window's own webContents. The Electron `zoomIn`/`zoomOut`
     // menu roles act on whichever webContents has keyboard focus, so with an
@@ -990,6 +1003,10 @@ export const make = Effect.gen(function* () {
     dispatchMenuAction: Effect.fn("desktop.window.dispatchMenuAction")(function* (action, options) {
       yield* Effect.annotateCurrentSpan({ action });
       yield* dispatchRendererEvent(MENU_ACTION_CHANNEL, action, options);
+    }),
+    dispatchTouchBarAction: Effect.fn("desktop.window.dispatchTouchBarAction")(function* (action) {
+      yield* Effect.annotateCurrentSpan({ action: action.kind });
+      yield* dispatchRendererEvent(TOUCH_BAR_ACTION_CHANNEL, action, { reveal: false });
     }),
     dispatchSnapShotEvent: Effect.fn("desktop.window.dispatchSnapShotEvent")(function* (event) {
       yield* Effect.annotateCurrentSpan({

@@ -152,11 +152,6 @@ export function DeviceSetup(props: {
             </p>
           </section>
         ) : null}
-        {props.state.hostStatus === "failed" && props.state.hostStatusDetail ? (
-          <p role="alert" className="mt-3 text-xs text-destructive">
-            {props.state.hostStatusDetail}
-          </p>
-        ) : null}
       </WizardPanel>
 
       <WizardFooter>

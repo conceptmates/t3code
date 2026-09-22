@@ -4790,21 +4790,11 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                 alt=""
                 className="size-full object-cover"
                 fallback={
-                  <PierreEntryIcon
-                    pathValue={image.name}
-                    kind="file"
-                    theme={resolvedTheme}
-                    className="m-auto size-3.5"
-                  />
+                  <PierreEntryIcon pathValue={image.name} kind="file" className="m-auto size-3.5" />
                 }
               />
             ) : (
-              <PierreEntryIcon
-                pathValue={image.name}
-                kind="file"
-                theme={resolvedTheme}
-                className="m-auto size-3.5"
-              />
+              <PierreEntryIcon pathValue={image.name} kind="file" className="m-auto size-3.5" />
             )}
           </button>
         ))}
@@ -6459,7 +6449,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                 <ComposerCommandMenuLayer anchor={composerMenuAnchor}>
                   <ComposerCommandMenu
                     items={composerMenuItems}
-                    resolvedTheme={resolvedTheme}
                     isLoading={isComposerMenuLoading}
                     triggerKind={composerTriggerKind}
                     emptyStateText={composerMenuEmptyState}
@@ -6744,11 +6733,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                           key={file.id}
                           className="flex min-w-0 items-center gap-2 py-1 text-sm text-foreground"
                         >
-                          <PierreEntryIcon
-                            pathValue={file.name}
-                            kind="file"
-                            theme={resolvedTheme}
-                          />
+                          <PierreEntryIcon pathValue={file.name} kind="file" />
                           <button
                             type="button"
                             disabled={needsReattach}

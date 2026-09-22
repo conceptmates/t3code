@@ -70,7 +70,6 @@ export type ComposerCommandItem =
 
 export const ComposerCommandMenu = memo(function ComposerCommandMenu(props: {
   items: ComposerCommandItem[];
-  resolvedTheme: "light" | "dark";
   isLoading: boolean;
   triggerKind: ComposerTriggerKind | null;
   emptyStateText?: string;
@@ -111,7 +110,6 @@ export const ComposerCommandMenu = memo(function ComposerCommandMenu(props: {
                   key={item.id}
                   item={item}
                   triggerKind={props.triggerKind}
-                  resolvedTheme={props.resolvedTheme}
                   isActive={props.activeItemId === item.id}
                   onHighlight={props.onHighlightedItemChange}
                   onSelect={props.onSelect}
@@ -145,7 +143,6 @@ export const ComposerCommandMenu = memo(function ComposerCommandMenu(props: {
 const ComposerCommandMenuItem = memo(function ComposerCommandMenuItem(props: {
   item: ComposerCommandItem;
   triggerKind: ComposerTriggerKind | null;
-  resolvedTheme: "light" | "dark";
   isActive: boolean;
   onHighlight: (itemId: string | null) => void;
   onSelect: (item: ComposerCommandItem) => void;
@@ -176,11 +173,7 @@ const ComposerCommandMenuItem = memo(function ComposerCommandMenuItem(props: {
       }}
     >
       {props.item.type === "path" ? (
-        <PierreEntryIcon
-          pathValue={props.item.path}
-          kind={props.item.pathKind}
-          theme={props.resolvedTheme}
-        />
+        <PierreEntryIcon pathValue={props.item.path} kind={props.item.pathKind} />
       ) : null}
       {pullRequestPresentation ? (
         <pullRequestPresentation.Icon

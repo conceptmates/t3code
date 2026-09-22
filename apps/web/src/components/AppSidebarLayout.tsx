@@ -10,6 +10,7 @@ import {
 import { useLocation, useNavigate } from "@tanstack/react-router";
 
 import { isElectron } from "../env";
+import { DesktopTouchBarCoordinator } from "./desktop/DesktopTouchBarCoordinator";
 import { getLocalStorageItem, removeLocalStorageItem } from "../hooks/useLocalStorage";
 import {
   isRichTextBoldShortcut,
@@ -240,6 +241,9 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
         style={sidebarProviderStyle}
       >
         <ProjectProjectionRetention />
+        {/* Inside SidebarProvider on purpose: the Touch Bar's drawer toggle
+            reads the sidebar through context, which has no store behind it. */}
+        <DesktopTouchBarCoordinator />
         <Sidebar
           side="left"
           collapsible="offcanvas"

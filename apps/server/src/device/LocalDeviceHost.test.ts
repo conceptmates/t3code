@@ -170,3 +170,36 @@ it.effect(
       expect(yield* fs.exists(`${baseDir}/tools`)).toBe(false);
     }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
 );
+
+describe("hub startup failure reporting", () => {
+  const describe_ = LocalDeviceHost.__testing.describeHubStartupFailure;
+
+  it("reads silence as the runtime having ignored the hub script", () => {
+    // A standalone T3 executable handed a script path runs its own CLI, so the
+    // hub never starts and never prints. That silence is the whole signal.
+    expect(describe_([], null)).toContain("ignored the hub script");
+  });
+
+  it("quotes what the hub printed before it stopped answering", () => {
+    const detail = describe_(["listening on 5555", "FATAL: port already in use"], null);
+    expect(detail).toContain("FATAL: port already in use");
+  });
+
+  it("keeps only the most recent lines so a dialog stays readable", () => {
+    const detail = describe_(["first", "second", "third", "fourth", "fifth"], null);
+    expect(detail).not.toContain("second");
+    expect(detail).toContain("fifth");
+  });
+
+  it("adds what the last readiness probe saw", () => {
+    const detail = describe_([], {
+      kind: "overall-timeout",
+      lastFailure: { attempt: 12, cause: { message: "ECONNREFUSED 127.0.0.1:5555" } },
+    });
+    expect(detail).toContain("ECONNREFUSED 127.0.0.1:5555");
+  });
+
+  it("omits the probe clause when the probe recorded nothing", () => {
+    expect(describe_(["some output"], { kind: "overall-timeout" })).not.toContain("last probe");
+  });
+});

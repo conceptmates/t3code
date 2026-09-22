@@ -1,0 +1,48 @@
+diff --git a/dist/iconConfig.d.ts b/dist/iconConfig.d.ts
+index 5d35ff0..64ad26d 100644
+--- a/dist/iconConfig.d.ts
++++ b/dist/iconConfig.d.ts
+@@ -21,6 +21,8 @@ interface FileTreeIconConfig {
+   byFileExtension?: Record<string, RemappedIcon>;
+   /** Remap file icons by basename substring (e.g. "dockerfile", "license"). */
+   byFileNameContains?: Record<string, RemappedIcon>;
++  /** Remap folder icons by exact basename (e.g. "src", "node_modules"). */
++  byFolderName?: Record<string, RemappedIcon>;
+ }
+ type FileTreeIcons = FileTreeBuiltInIconSet | FileTreeIconConfig;
+ interface NormalizedFileTreeIconConfig extends FileTreeIconConfig {
+diff --git a/dist/render/FileTreeView.js b/dist/render/FileTreeView.js
+index 648639b..a6f4604 100644
+--- a/dist/render/FileTreeView.js
++++ b/dist/render/FileTreeView.js
+@@ -368,7 +368,11 @@ function renderFileTreeRowContent(row, resolveIcon, { actionLaneEnabled = false,
+ 		}) : null,
+ 		/* @__PURE__ */ jsx("div", {
+ 			"data-item-section": "icon",
+-			children: row.kind === "directory" ? /* @__PURE__ */ jsx(Icon, { ...resolveIcon("file-tree-icon-chevron") }) : /* @__PURE__ */ jsx(Icon, { ...resolveIcon("file-tree-icon-file", targetPath) })
++			children: row.kind === "directory" ? /* @__PURE__ */ jsx(Icon, { ...resolveIcon("file-tree-icon-chevron") }) : null
++		}),
++		/* @__PURE__ */ jsx("div", {
++			"data-item-section": "entry-icon",
++			children: row.kind === "directory" ? /* @__PURE__ */ jsx(Icon, { ...resolveIcon("file-tree-icon-folder", targetPath) }) : /* @__PURE__ */ jsx(Icon, { ...resolveIcon("file-tree-icon-file", targetPath) })
+ 		}),
+ 		/* @__PURE__ */ jsx("div", {
+ 			"data-item-section": "content",
+diff --git a/dist/render/iconResolver.js b/dist/render/iconResolver.js
+index 3083683..4b1d581 100644
+--- a/dist/render/iconResolver.js
++++ b/dist/render/iconResolver.js
+@@ -30,7 +30,13 @@ function createFileTreeIconResolver(icons) {
+ 	const iconByFileExtension = /* @__PURE__ */ new Map();
+ 	for (const [extension, icon] of Object.entries(normalizedIcons.byFileExtension ?? {})) iconByFileExtension.set(normalizeIconRuleKey(extension), icon);
+ 	const iconByFileNameContains = Object.entries(normalizedIcons.byFileNameContains ?? {}).map(([needle, icon]) => [needle.toLowerCase(), icon]);
++	const iconByFolderName = /* @__PURE__ */ new Map();
++	for (const [folderName, icon] of Object.entries(normalizedIcons.byFolderName ?? {})) iconByFolderName.set(folderName.toLowerCase(), icon);
+ 	const resolveIcon = (name, filePath) => {
++		if (name === "file-tree-icon-folder" && filePath != null) {
++			const folderEntry = iconByFolderName.get(getBaseFileName(filePath).toLowerCase());
++			if (folderEntry != null) return remapEntryToIcon(folderEntry, name);
++		}
+ 		if (name === "file-tree-icon-file" && filePath != null) {
+ 			const fileName = getBaseFileName(filePath);
+ 			const lowerFileName = fileName.toLowerCase();

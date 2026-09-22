@@ -1,6 +1,7 @@
 import {
   type EnvironmentId,
   type EditorId,
+  type LaunchConfigEntry,
   type ProjectScript,
   type ResolvedKeybindingsConfig,
   type ThreadId,
@@ -32,6 +33,7 @@ import ProjectScriptsControl, {
   type NewProjectScriptInput,
   type ProjectScriptActionResult,
 } from "../ProjectScriptsControl";
+import { LaunchControl } from "../launch/LaunchControl";
 import { OpenInPicker } from "./OpenInPicker";
 import { useRemoteOpenState, type RemoteOpenMode } from "../../remoteOpen";
 import { usePrimaryEnvironmentId } from "../../state/environments";
@@ -78,6 +80,12 @@ interface ChatHeaderProps {
     input: NewProjectScriptInput,
   ) => Promise<ProjectScriptActionResult>;
   onDeleteProjectScript: (scriptId: string) => Promise<ProjectScriptActionResult>;
+  /** Entries from `.vscode/launch.json`; the Run control hides when there are none. */
+  launchEntries: ReadonlyArray<LaunchConfigEntry>;
+  primaryLaunchEntry: LaunchConfigEntry | null;
+  onRunLaunchEntry: (name: string) => void;
+  onOpenLaunchJson: () => void;
+  onLaunchMenuOpen: () => void;
 }
 
 /**
@@ -144,6 +152,11 @@ export const ChatHeader = memo(function ChatHeader({
   onAddProjectScript,
   onUpdateProjectScript,
   onDeleteProjectScript,
+  launchEntries,
+  primaryLaunchEntry,
+  onRunLaunchEntry,
+  onOpenLaunchJson,
+  onLaunchMenuOpen,
 }: ChatHeaderProps) {
   const { active: panelAnimationsActive, durationMs: panelAnimationDurationMs } =
     usePanelAnimationSettings();
@@ -369,9 +382,22 @@ export const ChatHeader = memo(function ChatHeader({
           />
         </>
       )}
-      {showOpenInPicker && (
+      {primaryLaunchEntry && launchEntries.length > 0 && (
         <>
           {actionsCollapsed && activeProjectScripts && <MenuSeparator />}
+          <LaunchControl
+            entries={launchEntries}
+            primaryEntry={primaryLaunchEntry}
+            keybindings={keybindings}
+            onRun={onRunLaunchEntry}
+            onOpenLaunchJson={onOpenLaunchJson}
+            onMenuOpen={onLaunchMenuOpen}
+          />
+        </>
+      )}
+      {showOpenInPicker && (
+        <>
+          {actionsCollapsed && (activeProjectScripts || primaryLaunchEntry) && <MenuSeparator />}
           <OpenInPicker
             presentation={actionsCollapsed ? "menu" : "toolbar"}
             environmentId={activeThreadEnvironmentId}
@@ -383,7 +409,9 @@ export const ChatHeader = memo(function ChatHeader({
       )}
       {activeProjectName && gitCwd && (
         <>
-          {actionsCollapsed && (activeProjectScripts || showOpenInPicker) && <MenuSeparator />}
+          {actionsCollapsed && (activeProjectScripts || primaryLaunchEntry || showOpenInPicker) && (
+            <MenuSeparator />
+          )}
           <GitActionsControl
             presentation={actionsCollapsed ? "menu" : "toolbar"}
             gitCwd={gitCwd}

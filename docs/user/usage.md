@@ -81,6 +81,20 @@ Grok reports the remaining subscription allowance and reset time for its current
 after signing in with `grok login`. Explicit `XAI_API_KEY` connections and custom authentication
 or endpoint configurations do not report subscription limits.
 
+On web and desktop, a small row under the composer shows the thread's context use, how many skills
+it has used, and how much of the current model's 5-hour and weekly limits is used, with the time
+until each resets. Hover **Skills** for their names. Skills count when you mention them with `$`, or
+when Claude or OpenCode loads one on its own. Turn the row off in
+**Settings → General → Usage under composer**.
+
+On a Mac with a Touch Bar, the desktop app puts every provider that reports quota on the strip:
+its icon and how much of the 5-hour window is spent. Tap any of them for the detailed view — each
+provider's 5-hour and weekly bars with the time until they reset — and tap a row there to switch
+the thread to that provider. The strip also carries the project's primary launch configuration and
+a button that stops the running turn, and **Run & Debug** takes the Escape key's place while
+T3 Code is in front. Turn the strip off in **Settings → General → Touch Bar**, which gives the
+Escape key back.
+
 API-key accounts may not report subscription limits. This also applies to Claude connections
 using a proxy through `ANTHROPIC_AUTH_TOKEN`.
 

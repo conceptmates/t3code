@@ -1,23 +1,33 @@
-import { DeviceHostUpdates } from "./DeviceHostUpdates";
 import type {
   DevicePlatform,
   DeviceServiceState,
   DeviceSummary,
   ScopedThreadRef,
 } from "@t3tools/contracts";
+import * as Schema from "effect/Schema";
 import {
+  Camera,
   ChevronLeft,
+  CircleStop,
+  Disc,
   Home,
+  Monitor,
+  MonitorOff,
+  PanelTopClose,
+  PanelTopOpen,
   PictureInPicture2,
   Power,
   RotateCcw,
   SlidersHorizontal,
   Smartphone,
   Square,
+  Volume1,
+  Volume2,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 
+import { useLocalStorage } from "~/hooks/useLocalStorage";
 import { usePreviewMiniPlayerStore } from "~/previewMiniPlayerStore";
 import { useRightPanelStore, type RightPanelSurface } from "~/rightPanelStore";
 import { Button } from "~/components/ui/button";
@@ -31,14 +41,27 @@ import { cn } from "~/lib/utils";
 import { deviceEnvironment, useDeviceHubAccess, useDeviceState } from "~/state/device";
 import { formatEnvironmentQueryError } from "~/state/query";
 import { useAtomCommand } from "~/state/use-atom-command";
+import { AndroidPairingDialog, androidPairingHosts } from "./AndroidPairingDialog";
+import { DeviceCaptureTray, DeviceRecordingBadge, useDeviceCapture } from "./DeviceCapture";
 import { DeviceStreamView, type DeviceStreamHandle } from "./DeviceStreamView";
+import { DeviceHostUpdates } from "./DeviceHostUpdates";
 import { DeviceLoadingView } from "./DeviceLoadingView";
 import { DeviceSetup } from "./DeviceSetup";
 import { DeviceToolsPanel } from "./DeviceToolsPanel";
 import { PreviewPanelShell, type PreviewPanelMode } from "../preview/PreviewPanelShell";
 
 const platformLabel = (platform: DevicePlatform) =>
-  platform === "ios" ? "iOS Simulators" : "Android Emulators";
+  platform === "ios" ? "iOS Simulators" : "Android devices";
+
+const DEVICE_TOOLBAR_HIDDEN_STORAGE_KEY = "t3code:device-toolbar-hidden";
+const DEVICE_AUTO_SCREEN_OFF_STORAGE_KEY = "t3code:device-auto-screen-off";
+
+const ANDROID_ROTATIONS = [
+  "portrait",
+  "landscape_left",
+  "portrait_upside_down",
+  "landscape_right",
+] as const;
 
 const deviceKey = (device: Pick<DeviceSummary, "hostId" | "id">) =>
   `${device.hostId}\u0000${device.id}`;
@@ -63,6 +86,20 @@ export function DevicePanel(props: {
   const [toolsOpen, setToolsOpen] = useState(false);
   const [axOverlay, setAxOverlay] = useState(false);
   const access = useDeviceHubAccess(environmentId);
+  const runAction = useAtomCommand(deviceEnvironment.action, { reportFailure: false });
+  const [toolbarHidden, setToolbarHidden] = useLocalStorage(
+    DEVICE_TOOLBAR_HIDDEN_STORAGE_KEY,
+    false,
+    Schema.Boolean,
+  );
+  const [autoScreenOff, setAutoScreenOff] = useLocalStorage(
+    DEVICE_AUTO_SCREEN_OFF_STORAGE_KEY,
+    false,
+    Schema.Boolean,
+  );
+  const [screenOffKey, setScreenOffKey] = useState<string | null>(null);
+  const [androidRotation, setAndroidRotation] = useState(0);
+  const [pairingOpen, setPairingOpen] = useState(false);
 
   const hostDisabled = state.hostStatus === "disabled";
 
@@ -90,6 +127,73 @@ export function DevicePanel(props: {
     : undefined;
 
   const grouped = useMemo(() => groupDevices(state), [state]);
+  const pairingHosts = useMemo(() => androidPairingHosts(state.hosts), [state.hosts]);
+
+  const capture = useDeviceCapture({
+    access,
+    device: activeDevice,
+    handle,
+    onError: setOperationError,
+  });
+
+  // The phone this panel turned dark. It is lit again once it stops showing
+  // here, so closing, hiding, or switching the device never strands a dark screen.
+  const poweredOffRef = useRef<DeviceSummary | null>(null);
+  const applyScreenPower = async (device: DeviceSummary, on: boolean) => {
+    const key = deviceKey(device);
+    const result = await runAction({
+      environmentId,
+      input: { hostId: device.hostId, deviceId: device.id, type: "setScreenPower", value: on },
+    });
+    if (result._tag === "Failure") {
+      setOperationError(formatEnvironmentQueryError(result.cause));
+      return;
+    }
+    if (!on) poweredOffRef.current = device;
+    else if (poweredOffRef.current && deviceKey(poweredOffRef.current) === key) {
+      poweredOffRef.current = null;
+    }
+    setScreenOffKey((current) => (on ? (current === key ? null : current) : key));
+  };
+  const restoreScreen = useEffectEvent((device: DeviceSummary) => {
+    void applyScreenPower(device, true);
+  });
+  const shownKey = props.visible && activeDevice ? deviceKey(activeDevice) : null;
+  useEffect(() => {
+    if (!shownKey) return;
+    return () => {
+      const device = poweredOffRef.current;
+      if (device && deviceKey(device) === shownKey) restoreScreen(device);
+    };
+  }, [shownKey]);
+
+  const autoScreenOffKey =
+    autoScreenOff && props.visible && activeDevice?.platform === "android" && activeDevice.physical
+      ? deviceKey(activeDevice)
+      : null;
+  const darkenForAutoScreenOff = useEffectEvent((key: string) => {
+    const device = state.devices.find((candidate) => deviceKey(candidate) === key);
+    if (device) void applyScreenPower(device, false);
+  });
+  useEffect(() => {
+    // oxlint-disable-next-line react/set-state-in-effect -- Drives the phone over adb; state updates land after the command.
+    if (autoScreenOffKey) darkenForAutoScreenOff(autoScreenOffKey);
+  }, [autoScreenOffKey]);
+
+  const rotateAndroid = async (device: DeviceSummary) => {
+    const next = (androidRotation + 1) % ANDROID_ROTATIONS.length;
+    const result = await runAction({
+      environmentId,
+      input: {
+        hostId: device.hostId,
+        deviceId: device.id,
+        type: "setOrientation",
+        value: ANDROID_ROTATIONS[next] ?? "portrait",
+      },
+    });
+    if (result._tag === "Failure") setOperationError(formatEnvironmentQueryError(result.cause));
+    else setAndroidRotation(next);
+  };
 
   const selectDevice = async (value: string) => {
     const device = state.devices.find((candidate) => deviceKey(candidate) === value);
@@ -184,68 +288,121 @@ export function DevicePanel(props: {
 
   return (
     <PreviewPanelShell mode={props.mode}>
-      <div className="flex h-9 shrink-0 items-center gap-1.5 border-b px-2">
-        <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
-          {props.surface.target
-            ? `${state.hosts.find((host) => host.id === props.surface.target?.hostId)?.label ?? "Device host"} · ${activeDevice?.version ?? props.surface.target.platform}`
-            : (pendingDevice?.name ?? "Choose a device")}
-        </span>
-        {activeDevice ? (
-          <>
-            <DeviceButton
-              label="Home"
-              onClick={() => handle?.pressButton("home")}
-              disabled={!handle?.inputConnected}
-            >
-              <Home />
-            </DeviceButton>
-            {activeDevice.platform === "android" ? (
-              <>
-                <DeviceButton
-                  label="Back"
-                  onClick={() => handle?.pressButton("back")}
-                  disabled={!handle?.inputConnected}
-                >
-                  <ChevronLeft />
-                </DeviceButton>
-                <DeviceButton
-                  label="Recents"
-                  onClick={() => handle?.pressButton("recents")}
-                  disabled={!handle?.inputConnected}
-                >
-                  <Square />
-                </DeviceButton>
-              </>
-            ) : (
+      {activeDevice && toolbarHidden ? null : (
+        <div className="flex h-9 shrink-0 items-center gap-1.5 border-b px-2">
+          <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+            {props.surface.target
+              ? `${state.hosts.find((host) => host.id === props.surface.target?.hostId)?.label ?? "Device host"} · ${activeDevice?.version ?? props.surface.target.platform}`
+              : (pendingDevice?.name ?? "Choose a device")}
+          </span>
+          {activeDevice ? (
+            <div className="flex min-w-0 items-center gap-1.5 overflow-x-auto [scrollbar-width:none]">
               <DeviceButton
-                label="Rotate"
-                onClick={() => handle?.rotate()}
+                label="Home"
+                onClick={() => handle?.pressButton("home")}
                 disabled={!handle?.inputConnected}
               >
-                <RotateCcw />
+                <Home />
               </DeviceButton>
-            )}
-            <Toggle
-              aria-label="Tools"
-              variant="ghost"
-              size="xs"
-              pressed={toolsOpen}
-              onPressedChange={(pressed) => setToolsOpen(Boolean(pressed))}
-            >
-              <SlidersHorizontal />
-            </Toggle>
-            <DeviceButton label="Float device over chat" onClick={floatActive}>
-              <PictureInPicture2 />
-            </DeviceButton>
-            <DeviceButton label="Power off" onClick={() => closeActive(true)}>
-              <Power />
-            </DeviceButton>
-            <DeviceButton label="Close" onClick={() => closeActive(false)}>
-              <X />
-            </DeviceButton>
-          </>
-        ) : null}
-      </div>
+              {activeDevice.platform === "android" ? (
+                <>
+                  <DeviceButton
+                    label="Back"
+                    onClick={() => handle?.pressButton("back")}
+                    disabled={!handle?.inputConnected}
+                  >
+                    <ChevronLeft />
+                  </DeviceButton>
+                  <DeviceButton
+                    label="Recents"
+                    onClick={() => handle?.pressButton("recents")}
+                    disabled={!handle?.inputConnected}
+                  >
+                    <Square />
+                  </DeviceButton>
+                  <DeviceButton
+                    label="Volume down"
+                    onClick={() => handle?.pressButton("volumeDown")}
+                    disabled={!handle?.inputConnected}
+                  >
+                    <Volume1 />
+                  </DeviceButton>
+                  <DeviceButton
+                    label="Volume up"
+                    onClick={() => handle?.pressButton("volumeUp")}
+                    disabled={!handle?.inputConnected}
+                  >
+                    <Volume2 />
+                  </DeviceButton>
+                  <DeviceButton label="Rotate" onClick={() => void rotateAndroid(activeDevice)}>
+                    <RotateCcw />
+                  </DeviceButton>
+                  {activeDevice.physical ? (
+                    <DeviceButton
+                      label={
+                        screenOffKey === deviceKey(activeDevice)
+                          ? "Turn screen on"
+                          : "Turn screen off"
+                      }
+                      onClick={() =>
+                        void applyScreenPower(
+                          activeDevice,
+                          screenOffKey === deviceKey(activeDevice),
+                        )
+                      }
+                    >
+                      {screenOffKey === deviceKey(activeDevice) ? <Monitor /> : <MonitorOff />}
+                    </DeviceButton>
+                  ) : null}
+                </>
+              ) : (
+                <DeviceButton
+                  label="Rotate"
+                  onClick={() => handle?.rotate()}
+                  disabled={!handle?.inputConnected}
+                >
+                  <RotateCcw />
+                </DeviceButton>
+              )}
+              <DeviceButton
+                label="Take screenshot"
+                onClick={() => void capture.takeScreenshot()}
+                disabled={capture.capturing}
+              >
+                <Camera />
+              </DeviceButton>
+              <DeviceButton
+                label={capture.recordingStartedAt === null ? "Record screen" : "Stop recording"}
+                onClick={capture.toggleRecording}
+                disabled={capture.recordingStartedAt === null && !handle}
+              >
+                {capture.recordingStartedAt === null ? <Disc /> : <CircleStop />}
+              </DeviceButton>
+              <Toggle
+                aria-label="Tools"
+                variant="ghost"
+                size="xs"
+                pressed={toolsOpen}
+                onPressedChange={(pressed) => setToolsOpen(Boolean(pressed))}
+              >
+                <SlidersHorizontal />
+              </Toggle>
+              <DeviceButton label="Float device over chat" onClick={floatActive}>
+                <PictureInPicture2 />
+              </DeviceButton>
+              <DeviceButton label="Hide toolbar" onClick={() => setToolbarHidden(true)}>
+                <PanelTopClose />
+              </DeviceButton>
+              <DeviceButton label="Power off" onClick={() => closeActive(true)}>
+                <Power />
+              </DeviceButton>
+              <DeviceButton label="Close" onClick={() => closeActive(false)}>
+                <X />
+              </DeviceButton>
+            </div>
+          ) : null}
+        </div>
+      )}
       {hostReady && state.hostStatusDetail ? (
         <div
           role="status"
@@ -292,6 +449,19 @@ export function DevicePanel(props: {
                 axOverlay={axOverlay}
                 onHandle={setHandle}
               />
+              {toolbarHidden ? (
+                <div className="absolute top-2 right-2 z-10 rounded-md bg-background/80">
+                  <DeviceButton label="Show toolbar" onClick={() => setToolbarHidden(false)}>
+                    <PanelTopOpen />
+                  </DeviceButton>
+                </div>
+              ) : null}
+              {capture.recordingStartedAt !== null ? (
+                <DeviceRecordingBadge startedAt={capture.recordingStartedAt} />
+              ) : null}
+              {capture.latest ? (
+                <DeviceCaptureTray capture={capture.latest} onDismiss={capture.dismiss} />
+              ) : null}
             </div>
             {toolsOpen ? (
               <DeviceToolsPanel
@@ -301,6 +471,8 @@ export function DevicePanel(props: {
                 access={access}
                 axOverlay={axOverlay}
                 onAxOverlayChange={setAxOverlay}
+                autoScreenOff={autoScreenOff}
+                onAutoScreenOffChange={setAutoScreenOff}
                 onClose={() => setToolsOpen(false)}
                 className="absolute inset-y-0 right-0 z-10 w-full max-w-72 border-l shadow-lg @[560px]:static @[560px]:w-72 @[560px]:shrink-0 @[560px]:shadow-none"
               />
@@ -390,19 +562,38 @@ export function DevicePanel(props: {
                 </p>
               ) : null}
               {loaded && !hostBusy ? (
-                <Button
-                  className={grouped.length > 0 ? "self-start" : "self-center"}
-                  variant={grouped.length > 0 ? "ghost" : "outline"}
-                  size="sm"
-                  onClick={() => void list({ environmentId, input: {} })}
+                <div
+                  className={
+                    grouped.length > 0
+                      ? "flex flex-wrap items-center gap-2 self-start"
+                      : "flex flex-wrap items-center gap-2 self-center"
+                  }
                 >
-                  Refresh devices
-                </Button>
+                  <Button
+                    variant={grouped.length > 0 ? "ghost" : "outline"}
+                    size="sm"
+                    onClick={() => void list({ environmentId, input: {} })}
+                  >
+                    Refresh devices
+                  </Button>
+                  {pairingHosts.length > 0 ? (
+                    <Button variant="ghost" size="sm" onClick={() => setPairingOpen(true)}>
+                      Pair phone over Wi-Fi
+                    </Button>
+                  ) : null}
+                </div>
               ) : null}
             </div>
           </div>
         )}
       </div>
+      {pairingOpen ? (
+        <AndroidPairingDialog
+          environmentId={environmentId}
+          hosts={pairingHosts}
+          onClose={() => setPairingOpen(false)}
+        />
+      ) : null}
     </PreviewPanelShell>
   );
 }

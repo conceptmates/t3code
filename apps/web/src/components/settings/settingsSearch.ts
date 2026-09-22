@@ -210,6 +210,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["red green blue orange additions deletions changes counts palette colorblind"],
   },
   {
+    id: "sidebar-project-color-groups",
+    title: "Project color groups",
+    to: "/settings/appearance",
+    searchTerms: ["sidebar tab groups colors projects threads chrome"],
+  },
+  {
     id: "panel-animations",
     title: "Panel animations",
     to: "/settings/appearance",
@@ -368,6 +374,18 @@ export const SETTINGS_SEARCH_ITEMS = [
     title: "Follow-up behavior",
     to: "/settings/general",
     searchTerms: ["queue steer running turn send default behavior composer"],
+  },
+  {
+    id: "composer-usage-row",
+    title: "Usage under composer",
+    to: "/settings/general",
+    searchTerms: ["context window limits rate 5 hour five session weekly quota progress bar"],
+  },
+  {
+    id: "touch-bar",
+    title: "Touch Bar",
+    to: "/settings/general",
+    searchTerms: ["macbook strip run launch provider limits quota interrupt macos"],
   },
   {
     id: "provider-update-checks",
@@ -574,6 +592,13 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["simulator emulator ios android install start"],
   },
   {
+    id: "android-wireless-debugging",
+    title: "Android wireless debugging",
+    to: "/settings/integrations",
+    targetId: "devices",
+    searchTerms: ["adb pair pairing qr code wifi wireless debugging phone connect"],
+  },
+  {
     id: "device-platform-support",
     title: "Simulator support",
     to: "/settings/integrations",
@@ -726,6 +751,15 @@ export const SETTINGS_SEARCH_ITEMS = [
     to: "/settings/connections",
     targetId: "connections-environment",
     searchTerms: ["expose backend remote pairing local machine interfaces host restart"],
+    localBackendManagementOnly: true,
+  },
+  {
+    id: "ssh-remote-version",
+    title: "SSH remote version",
+    to: "/settings/connections",
+    targetId: "connections-environment",
+    searchTerms: ["ssh remote release archive install nightly backend version"],
+    desktopOnly: true,
     localBackendManagementOnly: true,
   },
   {

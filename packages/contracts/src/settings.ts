@@ -436,6 +436,10 @@ export const ClientSettingsSchema = Schema.Struct({
   // Small row under the composer with context use and the provider's 5-hour
   // and weekly limits.
   composerUsageRowEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+  // macOS Touch Bar strip on the desktop app: run the primary launch config,
+  // interrupt the turn, and read the selected provider's quota. Ignored on
+  // every other platform and client.
+  touchBarEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   // Desktop resting composer: scrolling an existing thread's conversation
   // settles the composer into its single-line layout. Losing focus never does.
   composerCollapseOnScroll: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
@@ -1601,6 +1605,7 @@ export const ClientSettingsPatch = Schema.Struct({
   planModeEnabled: Schema.optionalKey(Schema.Boolean),
   contextWindowMeterEnabled: Schema.optionalKey(Schema.Boolean),
   composerUsageRowEnabled: Schema.optionalKey(Schema.Boolean),
+  touchBarEnabled: Schema.optionalKey(Schema.Boolean),
   composerCollapseOnScroll: Schema.optionalKey(Schema.Boolean),
   composerRichTextEnabled: Schema.optionalKey(Schema.Boolean),
   sendShortcut: Schema.optionalKey(Schema.Literals(["enter", "mod-enter-multiline", "mod-enter"])),

@@ -59,6 +59,14 @@ import {
 } from "./DeviceToolchain.ts";
 
 const HUB_READY_TIMEOUT_MS = 30_000;
+/**
+ * Hub output kept per spawn. A hub that fails to answer has usually said why
+ * on stdout, and that text is the only account of the failure the server can
+ * offer: nothing downstream can recover it once the child is gone.
+ */
+const HUB_OUTPUT_KEPT_LINES = 20;
+const HUB_OUTPUT_REPORTED_LINES = 3;
+const HUB_OUTPUT_REPORTED_CHARS = 300;
 const DAEMON_READY_TIMEOUT_MS = 30_000;
 const DAEMON_POLL_MS = 100;
 const HUB_RESTART_STABLE_UPTIME_MS = 60_000;
@@ -199,6 +207,32 @@ const deviceHostEnvironment = (
       }
     : environment;
 };
+
+/** The probe's own account of the last attempt, when `waitForHttpReady` kept one. */
+const readinessHint = (cause: unknown): string | null => {
+  const last = (cause as { readonly lastFailure?: { readonly cause?: unknown } } | null)
+    ?.lastFailure?.cause;
+  const message = (last as { readonly message?: unknown } | null)?.message;
+  return typeof message === "string" && message.length > 0 ? message : null;
+};
+
+/**
+ * Turns what the hub child printed into the sentence the Device panel shows.
+ * Silence is itself the diagnosis: a hub that never printed its banner usually
+ * means the spawned runtime ran something other than the hub script, which is
+ * exactly what a standalone T3 executable does when handed one.
+ */
+const describeHubStartupFailure = (output: ReadonlyArray<string>, cause: unknown): string => {
+  const hint = readinessHint(cause);
+  const printed =
+    output.length === 0
+      ? "It printed nothing, which usually means the runtime it was spawned with ignored the hub script."
+      : `Its last output was: ${truncateEnd(output.slice(-HUB_OUTPUT_REPORTED_LINES).join(" / "), HUB_OUTPUT_REPORTED_CHARS)}`;
+  return hint === null ? printed : `${printed} The last probe failed with: ${hint}`;
+};
+
+const truncateEnd = (text: string, limit: number) =>
+  text.length <= limit ? text : `${text.slice(0, limit - 1)}…`;
 
 export const make = Effect.fn("LocalDeviceHost.make")(function* () {
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
@@ -394,7 +428,8 @@ export const make = Effect.fn("LocalDeviceHost.make")(function* () {
       );
     const startedAtMillis = yield* Clock.currentTimeMillis;
     const hub: HubProcess = { child, scope, origin, startedAtMillis, nodePath };
-    yield* Effect.forkIn(observeHubOutput(hub), scope);
+    const output = yield* Ref.make<ReadonlyArray<string>>([]);
+    yield* Effect.forkIn(observeHubOutput(hub, output), scope);
     yield* waitForHttpReady({
       baseUrl: origin,
       path: "/readyz",
@@ -408,20 +443,49 @@ export const make = Effect.fn("LocalDeviceHost.make")(function* () {
     }).pipe(
       Effect.provideService(HttpClient.HttpClient, httpClient),
       Effect.tapError(() => stopHub(hub)),
+      // The child's own output is the only account of why it never answered,
+      // and it dies with the process, so it is read back here and carried on
+      // the error rather than left at debug level in the log.
+      Effect.catch((error) =>
+        Ref.get(output).pipe(
+          Effect.tap((lines) =>
+            Effect.logWarning("Device hub did not become ready", {
+              pid: Number(child.pid),
+              port,
+              nodePath,
+              output: lines,
+            }),
+          ),
+          Effect.flatMap((lines) =>
+            Effect.fail(
+              new DeviceHost.DeviceHostError({
+                hostId: error.hostId,
+                step: error.step,
+                cause: error.cause,
+                detail: describeHubStartupFailure(lines, error.cause),
+              }),
+            ),
+          ),
+        ),
+      ),
     );
     yield* recordHub(hub, hubTool);
     yield* Effect.logInfo("Device hub started", { pid: Number(child.pid), port });
     return hub;
   });
 
-  const observeHubOutput = (hub: HubProcess) =>
+  const observeHubOutput = (hub: HubProcess, kept: Ref.Ref<ReadonlyArray<string>>) =>
     hub.child.all.pipe(
       Stream.decodeText(),
       Stream.splitLines,
       Stream.map((line) => line.trim()),
       Stream.filter((line) => line.length > 0),
       Stream.runForEach((line) =>
-        Effect.logDebug("Device hub output", { pid: Number(hub.child.pid), output: line }),
+        Effect.logDebug("Device hub output", { pid: Number(hub.child.pid), output: line }).pipe(
+          Effect.andThen(
+            Ref.update(kept, (lines) => [...lines, line].slice(-HUB_OUTPUT_KEPT_LINES)),
+          ),
+        ),
       ),
       Effect.catchCause(() => Effect.void),
     );
@@ -777,4 +841,5 @@ export const __testing = {
   androidSdk,
   platformReason,
   deviceHostEnvironment,
+  describeHubStartupFailure,
 };

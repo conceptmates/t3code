@@ -256,7 +256,6 @@ export function FileChip(props: {
   name: string;
   size: string;
   isVideo: boolean;
-  theme: "light" | "dark";
   className: string;
   labelClassName: string;
   accessibleLabel: string;
@@ -311,7 +310,6 @@ function FileChipContent(props: {
   name: string;
   size: string;
   isVideo: boolean;
-  theme: "light" | "dark";
   labelClassName: string;
   suffix?: string | null;
 }) {
@@ -326,12 +324,7 @@ function FileChipContent(props: {
           )}
         />
       ) : (
-        <PierreEntryIcon
-          pathValue={props.name}
-          kind="file"
-          theme={props.theme}
-          className="size-3.5"
-        />
+        <PierreEntryIcon pathValue={props.name} kind="file" className="size-3.5" />
       )}
       <span className={cn(props.labelClassName, "max-w-72")}>
         {middleTruncateAttachmentName(props.name)}

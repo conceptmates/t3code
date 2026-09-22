@@ -36,6 +36,30 @@ export async function refreshUsageLimits<A>(
   return await current;
 }
 
+/**
+ * Warm provider limits for environments that just connected, so opening Usage
+ * shows real numbers instead of an empty panel.
+ *
+ * Goes through the same automatic path as the Usage page's own polling, which
+ * is what keeps this cheap: an environment is queried at most once per refresh
+ * window no matter how many times it reconnects, and a fetch already in flight
+ * is never duplicated. Failures are the caller's to ignore — a warm-up that
+ * cannot reach a provider is not worth interrupting anyone over.
+ */
+export async function warmUsageLimits({
+  environmentIds,
+  refresh,
+}: {
+  environmentIds: readonly EnvironmentId[];
+  refresh: (environmentId: EnvironmentId) => Promise<unknown>;
+}): Promise<void> {
+  await Promise.all(
+    environmentIds.map((environmentId) =>
+      refreshUsageLimits(environmentId, () => refresh(environmentId), true),
+    ),
+  );
+}
+
 /** Refresh pricing, then await each selected environment's rescan while it remains connected. */
 export async function refreshUsage({
   registry,

@@ -24,9 +24,17 @@ export class DeviceHostError extends Schema.TaggedError<DeviceHostError>()("Devi
   hostId: Schema.String,
   step: Schema.String,
   cause: Schema.Defect(),
+  /**
+   * What the step actually saw, in one or two sentences fit to show a user.
+   * The Device panel renders `message` verbatim, so a step that can explain
+   * itself puts that explanation here instead of leaving the reader with only
+   * the step name and a `cause` nothing unwraps.
+   */
+  detail: Schema.optional(Schema.String),
 }) {
   override get message(): string {
-    return `Device host ${this.hostId} failed while ${this.step}.`;
+    const base = `Device host ${this.hostId} failed while ${this.step}.`;
+    return this.detail === undefined ? base : `${base} ${this.detail}`;
   }
 }
 

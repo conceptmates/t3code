@@ -14,7 +14,6 @@ import {
   MenuTrigger,
 } from "~/components/ui/menu";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
-import { useTheme } from "~/hooks/useTheme";
 import { useWorkspaceMutationRefresh } from "~/hooks/useWorkspaceMutationRefresh";
 import { cn } from "~/lib/utils";
 import { isAbsolutePath } from "~/terminal-links";
@@ -84,7 +83,6 @@ function BreadcrumbMenuContent(props: {
     refresh: entriesQuery.refresh,
     resourceKey: `files:${props.environmentId}:${props.cwd}`,
   });
-  const { resolvedTheme } = useTheme();
   const entries = entriesQuery.data?.entries ?? [];
   const entriesTruncated = entriesQuery.data?.truncated ?? false;
   const children = useMemo(
@@ -161,7 +159,7 @@ function BreadcrumbMenuContent(props: {
                   props.onOpenFile(entry.path);
                 }}
               >
-                <PierreEntryIcon pathValue={entry.path} kind={entry.kind} theme={resolvedTheme} />
+                <PierreEntryIcon pathValue={entry.path} kind={entry.kind} />
                 <Tooltip>
                   <TooltipTrigger render={<span className="min-w-0 flex-1 truncate" />}>
                     {entry.label}

@@ -152,7 +152,7 @@ describe("nativeMarkdownTextRuns", () => {
       {
         text: "README.md:12",
         href: "file:///repo/README.md#L12",
-        fileIcon: "markdown",
+        fileIcon: "readme",
       },
     ]);
   });
@@ -278,7 +278,7 @@ describe("nativeMarkdownDocumentRuns", () => {
         text: "Checkout.tsx",
         role: "body",
         href: "src/Checkout.tsx",
-        fileIcon: "react",
+        fileIcon: "react_ts",
         sourceText: "@src/Checkout.tsx",
       },
       { text: ". Use @t3tools/contracts.", role: "body" },
@@ -294,7 +294,7 @@ describe("nativeMarkdownDocumentRuns", () => {
           run: {
             text: "Checkout.tsx",
             href: "src/Checkout.tsx",
-            fileIcon: "react",
+            fileIcon: "react_ts",
             sourceText: "@src/Checkout.tsx",
           },
           text: "\uFFFC",
@@ -594,8 +594,8 @@ describe("nativeMarkdownDocumentRuns", () => {
     // Merging these would render one chip and emit one copy range with a
     // combined label for two distinct references.
     expect(runs).toEqual([
-      { text: "First", role: "body", href, fileIcon: "bash" },
-      { text: "Second", role: "body", href, fileIcon: "bash" },
+      { text: "First", role: "body", href, fileIcon: "console" },
+      { text: "Second", role: "body", href, fileIcon: "console" },
     ]);
   });
 });
