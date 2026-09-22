@@ -112,7 +112,7 @@ const provider = (instanceId: string, driverKind: string, label: string, selecte
 
 const state = (overrides: Partial<DesktopTouchBarState> = {}): DesktopTouchBarState => ({
   providers: [provider("claudeAgent", "claudeAgent", "Claude 62%", true)],
-  sidebarOpen: false,
+  rightPanelOpen: null,
   terminalOpen: null,
   projects: [{ key: "t3code", label: "t3code", selected: false }],
   projectFilter: [
@@ -142,7 +142,6 @@ describe("resolveTouchBar", () => {
         "switch-project",
         "new-project",
         "new-thread",
-        "sidebar",
         "run",
       ],
     );
@@ -303,7 +302,7 @@ describe("DesktopTouchBar", () => {
 
       assert.deepStrictEqual(
         recorder.attaches.map((items) => (items === null ? null : items.length)),
-        [5, null],
+        [4, null],
       );
     }),
   );
@@ -334,7 +333,6 @@ describe("DesktopTouchBar", () => {
         { kind: "select-provider", instanceId: "claudeAgent" },
         { kind: "new-project" },
         { kind: "new-thread" },
-        { kind: "toggle-sidebar" },
       ]);
     }),
   );
@@ -386,10 +384,23 @@ describe("project scrubber", () => {
 
 describe("drawer toggles", () => {
   it("tints a drawer that is already open", () => {
-    const closed = DesktopTouchBar.resolveTouchBar(state({ sidebarOpen: false }));
-    const open = DesktopTouchBar.resolveTouchBar(state({ sidebarOpen: true }));
-    assert.isUndefined(closed.main.find((i) => i.key === "sidebar")?.backgroundColor);
-    assert.isDefined(open.main.find((i) => i.key === "sidebar")?.backgroundColor);
+    const closed = DesktopTouchBar.resolveTouchBar(state({ rightPanelOpen: false }));
+    const open = DesktopTouchBar.resolveTouchBar(state({ rightPanelOpen: true }));
+    assert.isUndefined(closed.main.find((i) => i.key === "right-panel")?.backgroundColor);
+    assert.isDefined(open.main.find((i) => i.key === "right-panel")?.backgroundColor);
+  });
+
+  it("omits the right panel outside a thread, and shows it inside one", () => {
+    assert.isUndefined(
+      DesktopTouchBar.resolveTouchBar(state({ rightPanelOpen: null })).main.find(
+        (i) => i.key === "right-panel",
+      ),
+    );
+    assert.isDefined(
+      DesktopTouchBar.resolveTouchBar(state({ rightPanelOpen: false })).main.find(
+        (i) => i.key === "right-panel",
+      ),
+    );
   });
 
   it("omits the terminal button outside a thread, and shows it inside one", () => {

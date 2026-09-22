@@ -1172,8 +1172,11 @@ export type DesktopTouchBarChoice = typeof DesktopTouchBarChoiceSchema.Type;
  */
 export const DesktopTouchBarStateSchema = Schema.Struct({
   providers: Schema.Array(DesktopTouchBarProviderSchema),
-  /** Tinted while the drawer is open, so each button reads as a toggle. */
-  sidebarOpen: Schema.Boolean,
+  /**
+   * Tinted while the panel is open, so the button reads as a toggle. Null
+   * outside a thread, which is the only place a right panel exists.
+   */
+  rightPanelOpen: Schema.NullOr(Schema.Boolean),
   /** Null outside a thread, where there is no terminal drawer to open. */
   terminalOpen: Schema.NullOr(Schema.Boolean),
   /** Configured projects, for the switcher. Empty hides that button. */
@@ -1207,7 +1210,7 @@ export const DesktopTouchBarActionSchema = Schema.Union([
     kind: Schema.Literal("filter-project"),
     key: Schema.String.check(Schema.isTrimmed()).check(Schema.isNonEmpty()),
   }),
-  Schema.Struct({ kind: Schema.Literal("toggle-sidebar") }),
+  Schema.Struct({ kind: Schema.Literal("toggle-right-panel") }),
   Schema.Struct({ kind: Schema.Literal("toggle-terminal") }),
   Schema.Struct({ kind: Schema.Literal("new-project") }),
   Schema.Struct({ kind: Schema.Literal("new-thread") }),

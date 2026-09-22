@@ -5,7 +5,7 @@ import { createTouchBarSender, type TouchBarBridge } from "./desktopTouchBar";
 
 const state = (label: string): DesktopTouchBarState => ({
   providers: [],
-  sidebarOpen: false,
+  rightPanelOpen: null,
   terminalOpen: null,
   projects: [],
   projectFilter: [],

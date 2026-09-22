@@ -71,10 +71,11 @@ const ACTION_GLYPHS: Record<string, string> = {
   "new-project":
     '<path d="M3.2 6.4a1.8 1.8 0 0 1 1.8-1.8h3.6l1.8 2.2h7.6a1.8 1.8 0 0 1 1.8 1.8v8.8a1.8 1.8 0 0 1-1.8 1.8H5a1.8 1.8 0 0 1-1.8-1.8z" fill="none" stroke="#ffffff" stroke-width="1.7" stroke-linejoin="round"/>' +
     '<path d="M12 10.6v5M9.5 13.1h5" stroke="#ffffff" stroke-width="1.7" stroke-linecap="round"/>',
-  sidebar:
+  // The filled panel sits on the RIGHT, mirroring where the drawer opens.
+  "right-panel":
     '<rect x="3.2" y="5" width="17.6" height="14" rx="2.2" fill="none" stroke="#ffffff" stroke-width="1.7"/>' +
-    '<path d="M9.6 5v14" stroke="#ffffff" stroke-width="1.7"/>' +
-    '<rect x="4.1" y="5.9" width="4.6" height="12.2" rx="1.3" fill="#ffffff" opacity="0.55"/>',
+    '<path d="M14.4 5v14" stroke="#ffffff" stroke-width="1.7"/>' +
+    '<rect x="15.3" y="5.9" width="4.6" height="12.2" rx="1.3" fill="#ffffff" opacity="0.55"/>',
   terminal:
     '<rect x="3.2" y="4.6" width="17.6" height="14.8" rx="2.2" fill="none" stroke="#ffffff" stroke-width="1.7"/>' +
     '<path d="M7.1 9.4l3.1 2.6-3.1 2.6" fill="none" stroke="#ffffff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>' +

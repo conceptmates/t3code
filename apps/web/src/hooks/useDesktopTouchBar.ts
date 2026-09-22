@@ -30,7 +30,7 @@ export interface DesktopTouchBarHandlers {
   readonly onOpenProject: (key: string) => void;
   /** Scope the thread sidebar; `all` clears the filter. */
   readonly onFilterProject: (key: string) => void;
-  readonly onToggleSidebar: () => void;
+  readonly onToggleRightPanel: () => void;
   readonly onToggleTerminal: () => void;
   readonly onNewProject: () => void;
   readonly onNewThread: () => void;
@@ -87,8 +87,8 @@ export function useDesktopTouchBar(
         case "filter-project":
           current.onFilterProject(action.key);
           return;
-        case "toggle-sidebar":
-          current.onToggleSidebar();
+        case "toggle-right-panel":
+          current.onToggleRightPanel();
           return;
         case "toggle-terminal":
           current.onToggleTerminal();

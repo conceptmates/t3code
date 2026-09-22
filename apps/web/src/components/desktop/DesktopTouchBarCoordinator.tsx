@@ -31,11 +31,10 @@ import {
   deriveProviderInstanceEntries,
   sortProviderInstanceEntries,
 } from "../../providerInstances";
-import { useThreadShells } from "../../state/entities";
-import { primaryServerProvidersAtom } from "../../state/server";
+import { useActiveEnvironmentId, useThreadShells } from "../../state/entities";
+import { environmentServerConfigsAtom, primaryServerProvidersAtom } from "../../state/server";
 import { buildThreadRouteParams } from "../../threadRoutes";
 import { useTouchBarThreadStore } from "../../touchBarThreadStore";
-import { useSidebar } from "../ui/sidebar";
 import { useUiStateStore } from "../../uiStateStore";
 
 /** The sidebar's own row for "no project filter"; the key must match. */
@@ -53,8 +52,18 @@ const ALL_PROJECTS_KEY = "all";
  */
 export function DesktopTouchBarCoordinator() {
   const enabled = usePrimarySettings((settings) => settings.touchBarEnabled);
-  const providerSnapshots = useAtomValue(primaryServerProvidersAtom);
-  const settings = usePrimarySettings();
+  // Providers come from the environment the user is actually working in, not
+  // just the primary one. Reading only the primary is why a quota that had
+  // visibly changed in the app could leave the strip showing a stale number:
+  // the two were reading different environments.
+  const activeEnvironmentId = useActiveEnvironmentId();
+  const serverConfigs = useAtomValue(environmentServerConfigsAtom);
+  const activeConfig =
+    activeEnvironmentId === null ? undefined : serverConfigs.get(activeEnvironmentId);
+  const primaryProviders = useAtomValue(primaryServerProvidersAtom);
+  const primarySettings = usePrimarySettings();
+  const providerSnapshots = activeConfig?.providers ?? primaryProviders;
+  const settings = activeConfig?.settings ?? primarySettings;
   const projectGroups = useProjectGroups();
   const threads = useThreadShells();
   const threadSortOrder = useClientSettings((value) => value.sidebarThreadSortOrder);
@@ -63,7 +72,6 @@ export function DesktopTouchBarCoordinator() {
   const thread = useTouchBarThreadStore();
   // Read through context, not a store: SidebarProvider keeps this in React
   // state, which is why this component is mounted inside it.
-  const { open: sidebarOpen, toggleSidebar } = useSidebar();
   // Quota countdowns are shown to the minute, so the artwork is redrawn on
   // that cadence and no faster.
   const [now, setNow] = useState(() => Date.now());
@@ -166,13 +174,20 @@ export function DesktopTouchBarCoordinator() {
     () => ({
       providers,
       selectedInstanceId: thread.selectedInstanceId,
-      sidebarOpen,
+      rightPanelOpen: thread.rightPanelOpen,
       terminalOpen: thread.terminalOpen,
       projects,
       projectFilter: [],
       run: thread.run,
     }),
-    [projects, providers, sidebarOpen, thread.run, thread.selectedInstanceId, thread.terminalOpen],
+    [
+      projects,
+      providers,
+      thread.rightPanelOpen,
+      thread.run,
+      thread.selectedInstanceId,
+      thread.terminalOpen,
+    ],
   );
 
   // Mirrors the command palette's project result: go to the project's most
@@ -213,7 +228,7 @@ export function DesktopTouchBarCoordinator() {
       onFilterProject: (key: string) => {
         setProjectScopeKey(key === ALL_PROJECTS_KEY ? null : key);
       },
-      onToggleSidebar: toggleSidebar,
+      onToggleRightPanel: () => thread.onToggleRightPanel?.(),
       onToggleTerminal: () => thread.onToggleTerminal?.(),
       onNewProject: () => openCommandPalette({ open: "add-project" }),
       onNewThread: () => {
@@ -226,7 +241,7 @@ export function DesktopTouchBarCoordinator() {
       },
       onRunToggle: () => thread.onRunToggle?.(),
     }),
-    [newThreadContext, onOpenProject, setProjectScopeKey, thread, toggleSidebar],
+    [newThreadContext, onOpenProject, setProjectScopeKey, thread],
   );
 
   /** Provider chips and their popover rows, redrawn when quota or countdown moves. */

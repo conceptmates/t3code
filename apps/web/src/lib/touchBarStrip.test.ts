@@ -52,7 +52,7 @@ const input = (overrides: Partial<TouchBarStripInput> = {}): TouchBarStripInput 
     },
   ],
   selectedInstanceId: "claudeAgent",
-  sidebarOpen: true,
+  rightPanelOpen: null,
   terminalOpen: null,
   projects: [{ key: "t3code", label: "t3code", selected: false }],
   projectFilter: [
@@ -307,16 +307,18 @@ describe("limitChoices", () => {
 });
 
 describe("drawer toggles", () => {
-  it("carries the sidebar state, and omits the terminal outside a thread", () => {
+  it("omits both drawers outside a thread, where neither exists", () => {
     const state = buildTouchBarState(input());
-    expect(state.sidebarOpen).toBe(true);
-    // Null, not false: there is no terminal drawer to be closed.
+    // Null, not false: there is no drawer to be closed.
+    expect(state.rightPanelOpen).toBeNull();
     expect(state.terminalOpen).toBeNull();
   });
 
   it("notices either drawer opening or closing", () => {
     const base = buildTouchBarState(input());
-    expect(sameTouchBarState(base, buildTouchBarState(input({ sidebarOpen: false })))).toBe(false);
+    expect(sameTouchBarState(base, buildTouchBarState(input({ rightPanelOpen: true })))).toBe(
+      false,
+    );
     expect(sameTouchBarState(base, buildTouchBarState(input({ terminalOpen: false })))).toBe(false);
     expect(sameTouchBarState(base, buildTouchBarState(input({ terminalOpen: true })))).toBe(false);
   });

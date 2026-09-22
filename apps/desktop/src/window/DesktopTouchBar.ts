@@ -164,13 +164,16 @@ export function resolveTouchBar(state: DesktopTouchBarState): ResolvedTouchBar {
     action: { kind: "new-thread" },
   });
 
-  main.push({
-    key: "sidebar",
-    label: "Sidebar",
-    icon: { source: "registered", key: actionIconKey("sidebar") },
-    ...(state.sidebarOpen ? { backgroundColor: TOGGLE_ON_COLOR } : {}),
-    action: { kind: "toggle-sidebar" },
-  });
+  // Absent outside a thread, where there is no right panel to open.
+  if (state.rightPanelOpen !== null) {
+    main.push({
+      key: "right-panel",
+      label: "Right panel",
+      icon: { source: "registered", key: actionIconKey("right-panel") },
+      ...(state.rightPanelOpen ? { backgroundColor: TOGGLE_ON_COLOR } : {}),
+      action: { kind: "toggle-right-panel" },
+    });
+  }
 
   // Absent outside a thread, where there is no terminal drawer to open.
   if (state.terminalOpen !== null) {

@@ -9712,16 +9712,20 @@ export default function ChatView(props: ChatViewProps) {
       run: touchBarRun,
       selectedInstanceId: activeProviderInstanceId,
       terminalOpen: terminalUiState.terminalOpen,
+      rightPanelOpen,
       onRunToggle: onTouchBarRunToggle,
       onSelectProvider: onTouchBarSelectProvider,
       onToggleTerminal: toggleTerminalVisibility,
+      onToggleRightPanel: toggleRightPanel,
     });
   }, [
     activeProviderInstanceId,
     onTouchBarRunToggle,
     onTouchBarSelectProvider,
     publishTouchBarSlice,
+    rightPanelOpen,
     terminalUiState.terminalOpen,
+    toggleRightPanel,
     toggleTerminalVisibility,
     touchBarRun,
   ]);

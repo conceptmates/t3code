@@ -65,8 +65,8 @@ export interface TouchBarProviderInput {
 export interface TouchBarStripInput {
   readonly providers: readonly TouchBarProviderInput[];
   readonly selectedInstanceId: string | null;
-  readonly sidebarOpen: boolean;
-  /** Null outside a thread, where there is no terminal drawer. */
+  /** Null outside a thread, where these drawers do not exist. */
+  readonly rightPanelOpen: boolean | null;
   readonly terminalOpen: boolean | null;
   /** Configured projects for the switcher; empty hides that button. */
   readonly projects: readonly TouchBarChoiceInput[];
@@ -256,7 +256,7 @@ export function buildTouchBarState(input: TouchBarStripInput): DesktopTouchBarSt
 
   return {
     providers,
-    sidebarOpen: input.sidebarOpen,
+    rightPanelOpen: input.rightPanelOpen,
     terminalOpen: input.terminalOpen,
     projects: input.projects.map(toChoice),
     projectFilter: input.projectFilter.map(toChoice),
@@ -292,7 +292,7 @@ export function sameTouchBarState(
 ): boolean {
   if (a === null || b === null) return a === b;
   if (a.run?.label !== b.run?.label || a.run?.state !== b.run?.state) return false;
-  if (a.sidebarOpen !== b.sidebarOpen || a.terminalOpen !== b.terminalOpen) return false;
+  if (a.rightPanelOpen !== b.rightPanelOpen || a.terminalOpen !== b.terminalOpen) return false;
   if (!sameChoices(a.projects, b.projects)) return false;
   if (!sameChoices(a.projectFilter, b.projectFilter)) return false;
   if (a.providers.length !== b.providers.length) return false;

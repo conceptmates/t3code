@@ -12,20 +12,24 @@ import { create } from "zustand";
 export interface TouchBarThreadSlice {
   readonly run: DesktopTouchBarState["run"];
   readonly selectedInstanceId: string | null;
-  /** Null outside a thread, where there is no terminal drawer to open. */
+  /** Null outside a thread, where these drawers do not exist. */
   readonly terminalOpen: boolean | null;
+  readonly rightPanelOpen: boolean | null;
   readonly onRunToggle: (() => void) | null;
   readonly onSelectProvider: ((instanceId: string) => void) | null;
   readonly onToggleTerminal: (() => void) | null;
+  readonly onToggleRightPanel: (() => void) | null;
 }
 
 const EMPTY_SLICE: TouchBarThreadSlice = {
   run: null,
   selectedInstanceId: null,
   terminalOpen: null,
+  rightPanelOpen: null,
   onRunToggle: null,
   onSelectProvider: null,
   onToggleTerminal: null,
+  onToggleRightPanel: null,
 };
 
 interface TouchBarThreadStore extends TouchBarThreadSlice {
@@ -44,9 +48,11 @@ export const useTouchBarThreadStore = create<TouchBarThreadStore>()((set) => ({
       current.run?.state === slice.run?.state &&
       current.selectedInstanceId === slice.selectedInstanceId &&
       current.terminalOpen === slice.terminalOpen &&
+      current.rightPanelOpen === slice.rightPanelOpen &&
       current.onRunToggle === slice.onRunToggle &&
       current.onSelectProvider === slice.onSelectProvider &&
-      current.onToggleTerminal === slice.onToggleTerminal
+      current.onToggleTerminal === slice.onToggleTerminal &&
+      current.onToggleRightPanel === slice.onToggleRightPanel
         ? current
         : slice,
     );
