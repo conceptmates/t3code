@@ -361,7 +361,7 @@ export const make = Effect.fn("LocalDeviceHost.make")(function* () {
       }
     }
     yield* fs.remove(hubStatePath(), { force: true }).pipe(Effect.ignore);
-  }).pipe(Effect.catchCause(() => Effect.void));
+  }).pipe(Effect.ignoreCause);
 
   const recordHub = (hub: HubProcess, hubTool: DeviceToolPaths) =>
     encodeHubStateFile({
@@ -487,7 +487,7 @@ export const make = Effect.fn("LocalDeviceHost.make")(function* () {
           ),
         ),
       ),
-      Effect.catchCause(() => Effect.void),
+      Effect.ignoreCause,
     );
 
   /**

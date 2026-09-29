@@ -26,11 +26,11 @@ import * as Semaphore from "effect/Semaphore";
 import * as ProcessRunner from "../processRunner.ts";
 
 const DEVICE_HUB_PACKAGE = "expo-device-hub";
-export const DEVICE_HUB_VERSION = "0.10.1";
+export const DEVICE_HUB_VERSION = "0.12.0";
 /** Must match the scrcpy server bundled/downloaded by the pinned hub release. */
 export const DEVICE_HUB_SCRCPY_VERSION = "4.0";
 const AGENT_DEVICE_PACKAGE = "agent-device";
-export const AGENT_DEVICE_VERSION = "0.21.7";
+export const AGENT_DEVICE_VERSION = "0.21.12";
 
 const INSTALL_TIMEOUT = Duration.minutes(10);
 const installLock = Semaphore.makeUnsafe(1);

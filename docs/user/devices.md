@@ -65,6 +65,13 @@ Choosing a device in the corner of the chat, or opening one in the panel, also
 makes it that thread's target: agents started afterwards see `ANDROID_SERIAL`
 and `T3CODE_DEVICE_ID`, so their `adb` commands reach it and a run script can
 use `flutter run -d "$ANDROID_SERIAL"`.
+Choose **3D view** to inspect supported devices while the live screen stays
+interactive. On iPhone Duo, use the fold and stance controls to change its
+physical pose, or pinch over the device to adjust the hinge. Turning the model
+to the other screen switches the live display and touch input to that screen.
+**Restore 3D view** returns the device to a screen-facing position.
+On supported Android foldables, use **Fold device** and **Unfold device** beside
+the screen to change its posture in either view.
 
 ## Tools
 
