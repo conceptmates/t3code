@@ -28,6 +28,14 @@ active threads together in the sidebar. Every project gets its own color, like a
 A project's group sits where its most recently arranged thread is, so dragging a thread to the top
 also brings the rest of that project's threads with it.
 
+## Composer context
+
+Git-backed projects show branch and worktree controls below the composer while you create a thread.
+The controls retreat as the composer docks after you send the first message.
+
+Turn on **Composer context** to keep those controls visible after the thread starts. This preference
+applies to the web and desktop clients.
+
 ## Motion
 
 The main sidebar, right panel, and terminal drawer open and close immediately by default. Move the

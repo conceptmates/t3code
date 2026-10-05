@@ -10,11 +10,7 @@ export function FileTagChipContent(props: {
 }) {
   return (
     <>
-      <PierreEntryIcon
-        pathValue={props.path}
-        kind={inferEntryKindFromPath(props.path)}
-        theme={props.theme}
-      />
+      <PierreEntryIcon pathValue={props.path} kind={inferEntryKindFromPath(props.path)} />
       <ContextChipLabel>{props.label}</ContextChipLabel>
     </>
   );

@@ -151,7 +151,7 @@ function BreadcrumbMenuContent(props: {
               const isCurrentFile = entry.kind === "file" && entry.path === props.currentFilePath;
               const row = (
                 <>
-                  <PierreEntryIcon pathValue={entry.path} kind={entry.kind} theme={resolvedTheme} />
+                  <PierreEntryIcon pathValue={entry.path} kind={entry.kind} />
                   <Tooltip>
                     <TooltipTrigger
                       render={

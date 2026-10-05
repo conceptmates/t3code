@@ -218,7 +218,6 @@ export function FileChip(props: {
   name: string;
   size: string;
   isVideo: boolean;
-  theme: "light" | "dark";
   accessibleLabel: string;
   tooltip: string;
   suffix?: string | null;
@@ -271,16 +270,11 @@ function FileChipContent(props: {
   name: string;
   size: string;
   isVideo: boolean;
-  theme: "light" | "dark";
   suffix?: string | null;
 }) {
   return (
     <>
-      {props.isVideo ? (
-        <FilmIcon />
-      ) : (
-        <PierreEntryIcon pathValue={props.name} kind="file" theme={props.theme} />
-      )}
+      {props.isVideo ? <FilmIcon /> : <PierreEntryIcon pathValue={props.name} kind="file" />}
       <ContextChipLabel className="max-w-72">
         {middleTruncateAttachmentName(props.name)}
       </ContextChipLabel>
