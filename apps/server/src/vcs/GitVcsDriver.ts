@@ -8,7 +8,7 @@ import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
-import { ChildProcessSpawner } from "effect/unstable/process";
+import { ChildProcessSpawner } from "effect/process";
 
 import {
   COMMIT_GRAPH_DEFAULT_PAGE_SIZE,
@@ -174,6 +174,8 @@ export interface CreateWorktreeOptions {
    * own t3.json.
    */
   readonly submodules?: WorktreeSubmodules | null;
+  /** The `worktreesDirectory` setting, used when the input has no explicit path. */
+  readonly worktreesDirectory?: string;
 }
 
 export interface GitCommitProgress {
