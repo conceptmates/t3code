@@ -2264,15 +2264,15 @@ describe("Working shelf (beta)", () => {
       key,
       section,
     });
-    // Pinned p1 | Active a1 a2 | Working w1 | Settled s1
+    // Working w1 | Pinned p1 | Active a1 a2 | Settled s1
     const items: readonly SidebarListItem[] = [
+      marker("working-header"),
+      row("w1", "working"),
       marker("pinned-header"),
       row("p1", "pinned"),
       marker("pinned-divider"),
       row("a1", "active"),
       row("a2", "active"),
-      marker("working-header"),
-      row("w1", "working"),
       marker("settled-header"),
       row("s1", "settled"),
     ];
