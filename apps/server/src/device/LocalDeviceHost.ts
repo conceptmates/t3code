@@ -417,88 +417,91 @@ export const make = Effect.fn("LocalDeviceHost.make")(function* () {
     );
     const origin = `http://127.0.0.1:${port}`;
     const scope = yield* Scope.make("sequential");
-    const child = yield* spawner
-      .spawn(
-        ChildProcess.make(
-          nodePath,
-          [
-            hubTool.entryPath,
-            "--port",
-            String(port),
-            "--host",
-            "127.0.0.1",
-            "--hide-sidebar",
-            "--hide-boot-device",
-          ],
-          {
-            detached: false,
-            shell: false,
-            stdout: "pipe",
-            stderr: "pipe",
-            env: yield* hubEnvironment(hostEnvironment).pipe(
-              Effect.provideService(FileSystem.FileSystem, fs),
-              Effect.provideService(HostProcessPlatform, hostPlatform),
-            ),
-          },
-        ),
-      )
-      .pipe(
-        Effect.provideService(Scope.Scope, scope),
-        Effect.mapError(
-          (cause) =>
-            new DeviceHost.DeviceHostError({
-              hostId,
-              step: "starting the device hub",
-              cause,
-            }),
-        ),
-      );
-    const startedAtMillis = yield* Clock.currentTimeMillis;
-    const hub: HubProcess = { child, scope, origin, startedAtMillis, nodePath };
-    const output = yield* Ref.make<ReadonlyArray<string>>([]);
-    yield* Effect.forkIn(observeHubOutput(hub, output), scope);
-    yield* waitForHttpReady({
-      baseUrl: origin,
-      path: "/readyz",
-      timeoutMs: HUB_READY_TIMEOUT_MS,
-      makeError: (info) =>
-        new DeviceHost.DeviceHostError({
-          hostId,
-          step: "waiting for the device hub to answer",
-          cause: info.cause,
-        }),
-    }).pipe(
-      Effect.provideService(HttpClient.HttpClient, httpClient),
-      Effect.tapError(() => stopHub(hub)),
-      // The child's own output is the only account of why it never answered,
-      // and it dies with the process, so it is read back here and carried on
-      // the error rather than left at debug level in the log.
-      Effect.catch((error) =>
-        Ref.get(output).pipe(
-          Effect.tap((lines) =>
-            Effect.logWarning("Device hub did not become ready", {
-              pid: Number(child.pid),
-              port,
-              nodePath,
-              output: lines,
-            }),
+    // On failure or interrupt, from the spawn on: the hub is not recorded yet,
+    // so nothing else stops it.
+    return yield* Effect.gen(function* () {
+      const child = yield* spawner
+        .spawn(
+          ChildProcess.make(
+            nodePath,
+            [
+              hubTool.entryPath,
+              "--port",
+              String(port),
+              "--host",
+              "127.0.0.1",
+              "--hide-sidebar",
+              "--hide-boot-device",
+            ],
+            {
+              detached: false,
+              shell: false,
+              stdout: "pipe",
+              stderr: "pipe",
+              env: yield* hubEnvironment(hostEnvironment).pipe(
+                Effect.provideService(FileSystem.FileSystem, fs),
+                Effect.provideService(HostProcessPlatform, hostPlatform),
+              ),
+            },
           ),
-          Effect.flatMap((lines) =>
-            Effect.fail(
+        )
+        .pipe(
+          Effect.provideService(Scope.Scope, scope),
+          Effect.mapError(
+            (cause) =>
               new DeviceHost.DeviceHostError({
-                hostId: error.hostId,
-                step: error.step,
-                cause: error.cause,
-                detail: describeHubStartupFailure(lines, error.cause),
+                hostId,
+                step: "starting the device hub",
+                cause,
+              }),
+          ),
+        );
+      const startedAtMillis = yield* Clock.currentTimeMillis;
+      const hub: HubProcess = { child, scope, origin, startedAtMillis, nodePath };
+      const output = yield* Ref.make<ReadonlyArray<string>>([]);
+      yield* Effect.forkIn(observeHubOutput(hub, output), scope);
+      yield* waitForHttpReady({
+        baseUrl: origin,
+        path: "/readyz",
+        timeoutMs: HUB_READY_TIMEOUT_MS,
+        makeError: (info) =>
+          new DeviceHost.DeviceHostError({
+            hostId,
+            step: "waiting for the device hub to answer",
+            cause: info.cause,
+          }),
+      }).pipe(
+        Effect.provideService(HttpClient.HttpClient, httpClient),
+        // The child's own output is the only account of why it never answered,
+        // and it dies with the process, so it is read back here and carried on
+        // the error rather than left at debug level in the log.
+        Effect.catch((error) =>
+          Ref.get(output).pipe(
+            Effect.tap((lines) =>
+              Effect.logWarning("Device hub did not become ready", {
+                pid: Number(child.pid),
+                port,
+                nodePath,
+                output: lines,
               }),
             ),
+            Effect.flatMap((lines) =>
+              Effect.fail(
+                new DeviceHost.DeviceHostError({
+                  hostId: error.hostId,
+                  step: error.step,
+                  cause: error.cause,
+                  detail: describeHubStartupFailure(lines, error.cause),
+                }),
+              ),
+            ),
           ),
         ),
-      ),
-    );
-    yield* recordHub(hub, hubTool);
-    yield* Effect.logInfo("Device hub started", { pid: Number(child.pid), port });
-    return hub;
+      );
+      yield* recordHub(hub, hubTool);
+      yield* Effect.logInfo("Device hub started", { pid: Number(child.pid), port });
+      return hub;
+    }).pipe(Effect.onError(() => Scope.close(scope, Exit.void).pipe(Effect.ignore)));
   });
 
   const observeHubOutput = (hub: HubProcess, kept: Ref.Ref<ReadonlyArray<string>>) =>
@@ -686,26 +689,31 @@ export const make = Effect.fn("LocalDeviceHost.make")(function* () {
     );
     yield* onPhase("starting");
     const hub = yield* spawnHub(hubTool, nodePath);
-    yield* pruneLocalDeviceTools(config.baseDir, nodePath, "hub").pipe(
-      Effect.provideService(Path.Path, path),
-      Effect.provideService(ProcessRunner.ProcessRunner, runner),
-      Effect.ignore,
-    );
-    const candidate = helperPaths(hubTool);
-    const [axExists, cliExists] = yield* Effect.all([
-      fs.exists(candidate.serveSimAxSettings).pipe(Effect.orElseSucceed(() => false)),
-      fs.exists(candidate.serveSimCli).pipe(Effect.orElseSucceed(() => false)),
-    ]);
-    const next: RunningHost = {
-      hub,
-      agentDevice: null,
-      helpers: {
-        serveSimAxSettings: axExists ? candidate.serveSimAxSettings : null,
-        serveSimCli: cliExists ? candidate.serveSimCli : null,
-        scrcpyServer: candidate.scrcpyServer,
-      },
-    };
-    yield* Ref.set(runningRef, next);
+    // Until the hub is in runningRef, nothing else stops it, so publishing it
+    // is part of the guarded step.
+    const next = yield* Effect.gen(function* () {
+      yield* pruneLocalDeviceTools(config.baseDir, nodePath, "hub").pipe(
+        Effect.provideService(Path.Path, path),
+        Effect.provideService(ProcessRunner.ProcessRunner, runner),
+        Effect.ignore,
+      );
+      const candidate = helperPaths(hubTool);
+      const [axExists, cliExists] = yield* Effect.all([
+        fs.exists(candidate.serveSimAxSettings).pipe(Effect.orElseSucceed(() => false)),
+        fs.exists(candidate.serveSimCli).pipe(Effect.orElseSucceed(() => false)),
+      ]);
+      const next: RunningHost = {
+        hub,
+        agentDevice: null,
+        helpers: {
+          serveSimAxSettings: axExists ? candidate.serveSimAxSettings : null,
+          serveSimCli: cliExists ? candidate.serveSimCli : null,
+          scrcpyServer: candidate.scrcpyServer,
+        },
+      };
+      yield* Ref.set(runningRef, next);
+      return next;
+    }).pipe(Effect.onError(() => stopHub(hub)));
     yield* Ref.set(restartDelayRef, 0);
     yield* Effect.forkDetach(superviseHub(hub, hubTool));
     return next;
