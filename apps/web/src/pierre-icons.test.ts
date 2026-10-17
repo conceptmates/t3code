@@ -32,6 +32,21 @@ describe("file icon resolution", () => {
     assert.equal(resolvePierreIconForEntry("AGENTS.md", "file").name, "mi-agent");
   });
 
+  it("uses the detected type for extensionless files without a name rule", () => {
+    assert.equal(
+      resolvePierreIconForEntry("custom-script", "file", "text/x-python").name,
+      resolvePierreIconForEntry("file.py", "file").name,
+    );
+    assert.equal(
+      resolvePierreIconForEntry("Dockerfile", "file", "text/x-shellscript").name,
+      "mi-docker",
+    );
+    assert.equal(
+      resolvePierreIconForEntry("unknown", "file", "application/octet-stream").name,
+      "mi-file",
+    );
+  });
+
   it("uses the generic file glyph for unknown types", () => {
     assert.equal(resolvePierreIconForEntry("artifact.unknown-ext", "file").name, "mi-file");
     assert.isFalse(hasSpecificPierreIconForFileName("artifact.unknown-ext"));
@@ -53,6 +68,25 @@ describe("file icon resolution", () => {
 
   it("gives a dockerfile fence the Docker icon", () => {
     assert.isTrue(hasSpecificPierreIconForFileName(syntheticFileNameForLanguageId("dockerfile")));
+  });
+
+  it.each([
+    "csharp",
+    "dart",
+    "diff",
+    "elixir",
+    "haskell",
+    "java",
+    "kotlin",
+    "lua",
+    "php",
+    "powershell",
+    "r",
+    "scala",
+    "toml",
+    "xml",
+  ])("gives a %s fence a language icon", (language) => {
+    assert.isTrue(hasSpecificPierreIconForFileName(syntheticFileNameForLanguageId(language)));
   });
 });
 

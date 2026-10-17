@@ -1,5 +1,5 @@
 import { assert, describe, it } from "@effect/vitest";
-import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
+import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import type * as Electron from "electron";
@@ -94,7 +94,7 @@ vi.mock("electron", () => {
 import * as ElectronTouchBar from "./ElectronTouchBar.ts";
 
 const TestLayer = ElectronTouchBar.layer.pipe(
-  Layer.provide(Layer.succeed(HostProcessPlatform, "darwin")),
+  Layer.provide(Layer.succeed(HostProcess.Platform, "darwin")),
 );
 
 const makeWindow = (): Electron.BrowserWindow =>

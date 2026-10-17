@@ -91,6 +91,7 @@ const layerFor = (
             recorder.actions.push(action);
           }),
         zoomMain: () => Effect.void,
+        runMainContentsCommand: () => Effect.void,
         syncAppearance: Effect.void,
       } satisfies DesktopWindow.DesktopWindow["Service"]),
     ),

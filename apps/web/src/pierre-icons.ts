@@ -1,4 +1,5 @@
 import { getBuiltInSpriteSheet, type FileTreeIcons } from "@pierre/trees";
+import { fileIconPathForMimeType } from "@t3tools/shared/filePreview";
 
 import {
   MATERIAL_DEFAULT_FILE_ICON,
@@ -15,6 +16,16 @@ export interface PierreIconResolution {
 }
 
 const PIERRE_ICON_SPRITE_ID = "t3code-pierre-file-icon-sprite";
+
+/** Our own tree glyphs, appended to the generated Material sheet. */
+const T3_TREE_ICON_SYMBOLS = `
+  <!-- Lucide Loader Circle icon, ISC license. -->
+  <symbol id="t3-tree-icon-loading" viewBox="0 0 24 24">
+    <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M21 12a9 9 0 1 1-6.219-8.56" />
+  </symbol>
+`;
+const lastSvgClose = MATERIAL_ICON_SPRITE.lastIndexOf("</svg>");
+const T3_ICON_SPRITE = `${MATERIAL_ICON_SPRITE.slice(0, lastSvgClose)}${T3_TREE_ICON_SYMBOLS}${MATERIAL_ICON_SPRITE.slice(lastSvgClose)}`;
 
 /**
  * Filenames upstream leaves on the generic file icon but that carry real
@@ -46,7 +57,7 @@ const T3_ICON_BY_FILE_NAME: Record<string, string> = {
 export const T3_PIERRE_ICONS = {
   set: "none",
   colored: false,
-  spriteSheet: MATERIAL_ICON_SPRITE,
+  spriteSheet: T3_ICON_SPRITE,
   // Entries that match no rule still need a glyph, and Pierre's generic ones
   // are from the set we just turned off.
   remap: {
@@ -68,11 +79,15 @@ export function pierreIconsForPlatform(_isDesktop: boolean): FileTreeIcons {
 const LANGUAGE_EXTENSION_ALIASES: Record<string, string> = {
   bash: "sh",
   csharp: "cs",
+  elixir: "ex",
+  haskell: "hs",
   javascript: "js",
   jsx: "jsx",
+  kotlin: "kt",
   markdown: "md",
   mdx: "mdx",
   plaintext: "txt",
+  powershell: "ps1",
   python: "py",
   ruby: "rb",
   rust: "rs",
@@ -125,16 +140,25 @@ function resolveFileSymbol(fileName: string): string | null {
   return null;
 }
 
+/**
+ * `mimeType` is the detected content type; an extensionless file with no name
+ * rule falls back to the icon its type implies (a shebang script, an image).
+ */
 export function resolvePierreIconForEntry(
   pathValue: string,
   kind: "file" | "directory",
-  _isDesktop = false,
+  mimeType?: string,
 ): PierreIconResolution {
   const base = basenameOfPath(pathValue).toLowerCase();
   if (kind === "directory") {
     return { name: MATERIAL_ICON_BY_FOLDER_NAME[base] ?? MATERIAL_DEFAULT_FOLDER_ICON };
   }
-  return { name: resolveFileSymbol(base) ?? MATERIAL_DEFAULT_FILE_ICON };
+  const symbol =
+    resolveFileSymbol(base) ??
+    (mimeType
+      ? resolveFileSymbol(basenameOfPath(fileIconPathForMimeType(pathValue, mimeType)))
+      : null);
+  return { name: symbol ?? MATERIAL_DEFAULT_FILE_ICON };
 }
 
 /** False when a name only reaches the generic file glyph, so callers can hide it. */
@@ -154,6 +178,6 @@ export function ensurePierreIconSprite(): void {
   container.style.pointerEvents = "none";
   // The minimal sheet carries the chevron, dot, and lock slots our own chrome
   // shares with the tree rows.
-  container.innerHTML = `${getBuiltInSpriteSheet("minimal")}${MATERIAL_ICON_SPRITE}`;
+  container.innerHTML = `${getBuiltInSpriteSheet("minimal")}${T3_ICON_SPRITE}`;
   document.body.prepend(container);
 }

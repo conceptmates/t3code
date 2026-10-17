@@ -87,7 +87,11 @@ export function DesktopTouchBarCoordinator() {
   const providers = useMemo<readonly TouchBarProviderInput[]>(
     () =>
       sortProviderInstanceEntries(
-        applyProviderInstanceSettings(deriveProviderInstanceEntries(providerSnapshots), settings),
+        applyProviderInstanceSettings(
+          deriveProviderInstanceEntries(providerSnapshots),
+          settings,
+          null,
+        ),
       )
         .filter(
           (entry) => entry.enabled && entry.isAvailable && entry.snapshot.usageLimits !== undefined,

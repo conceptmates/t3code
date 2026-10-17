@@ -20,7 +20,7 @@ import {
   type LaunchStartersInput,
   type LaunchStartersResult,
 } from "@t3tools/contracts";
-import { HostProcessEnvironment, HostProcessPlatform } from "@t3tools/shared/hostProcess";
+import * as HostProcess from "@t3tools/shared/HostProcess";
 import { fromLenientJson } from "@t3tools/shared/schemaJson";
 import { isCommandAvailable } from "@t3tools/shared/shell";
 import * as Context from "effect/Context";
@@ -136,8 +136,8 @@ export const make = Effect.gen(function* () {
   const list = Effect.fn("LaunchConfigs.list")(function* (
     input: LaunchListConfigsInput,
   ): Effect.fn.Return<LaunchListConfigsResult, LaunchListConfigsError> {
-    const env = yield* HostProcessEnvironment;
-    const platform = yield* HostProcessPlatform;
+    const env = yield* HostProcess.Environment;
+    const platform = yield* HostProcess.Platform;
     const workspaceFolder = input.cwd;
 
     const launchContents = yield* readOptionalFile(
@@ -234,7 +234,7 @@ export const make = Effect.gen(function* () {
   const starters = Effect.fn("LaunchConfigs.starters")(function* (
     input: LaunchStartersInput,
   ): Effect.fn.Return<LaunchStartersResult> {
-    const platform = yield* HostProcessPlatform;
+    const platform = yield* HostProcess.Platform;
     const [, facts] = yield* gatherFacts(input.cwd, platform);
     const readRootFile = (file: string) => readHint(path.join(input.cwd, file));
     const existsAtRoot = (file: string) =>

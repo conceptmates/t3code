@@ -5,7 +5,7 @@ import {
   type LaunchRunStep,
   type TerminalEvent,
 } from "@t3tools/contracts";
-import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
+import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Queue from "effect/Queue";
@@ -117,7 +117,7 @@ const makeHarness = Effect.fn("makeHarness")(function* (
           }),
       }),
     ),
-    Layer.provide(Layer.succeed(HostProcessPlatform, platform)),
+    Layer.provide(Layer.succeed(HostProcess.Platform, platform)),
   );
 
   const emit = (event: TerminalEvent) =>

@@ -1,4 +1,4 @@
-import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
+import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -146,7 +146,7 @@ const ICON_SCALE_FACTOR = 2;
 
 /** @public Service construction is part of the canonical Effect module API. */
 export const make = Effect.gen(function* () {
-  const platform = yield* HostProcessPlatform;
+  const platform = yield* HostProcess.Platform;
   // Native items outlive each `attach`, so `update` can assign onto them
   // without rebuilding anything. Cleared whenever the bar is rebuilt.
   const itemsByKey = new Map<string, NativeItem>();

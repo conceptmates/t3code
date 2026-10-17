@@ -1,6 +1,6 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { describe, expect, it } from "@effect/vitest";
-import { HostProcessEnvironment } from "@t3tools/shared/hostProcess";
+import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
@@ -50,7 +50,7 @@ const listWithToolchain = Effect.fn("listWithToolchain")(function* (
   return yield* launchConfigs
     .list(inputValues === undefined ? { cwd: root } : { cwd: root, inputValues })
     .pipe(
-      Effect.provideService(HostProcessEnvironment, { PATH: path.join(root, ".bin"), HOME: root }),
+      Effect.provideService(HostProcess.Environment, { PATH: path.join(root, ".bin"), HOME: root }),
     );
 });
 

@@ -19,7 +19,7 @@ import {
   type LaunchStopInput,
   type TerminalError,
 } from "@t3tools/contracts";
-import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
+import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
@@ -64,7 +64,7 @@ function unrunnableReason(status: Exclude<LaunchConfigStatus, { readonly _tag: "
 export const make = Effect.gen(function* () {
   const launchConfigs = yield* LaunchConfigs.LaunchConfigs;
   const terminalManager = yield* TerminalManager.TerminalManager;
-  const platform = yield* HostProcessPlatform;
+  const platform = yield* HostProcess.Platform;
   const scope = yield* Scope.make("sequential");
   yield* Effect.addFinalizer(() => Scope.close(scope, Exit.void));
 

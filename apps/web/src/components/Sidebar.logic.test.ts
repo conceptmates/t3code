@@ -6,11 +6,8 @@ import { defaultAnimateLayoutChanges, type AnimateLayoutChanges } from "@dnd-kit
 import * as Cause from "effect/Cause";
 import { AsyncResult } from "effect/reactivity";
 import {
-  SIDEBAR_PROJECT_GROUP_COLORS,
   animateSidebarLayoutChanges,
   applySidebarThreadDrop,
-  groupThreadsByProject,
-  resolveSidebarProjectGroupColor,
   archiveSelectedThreadEntries,
   buildBulkTitleRegenerationContextMenuItem,
   buildBulkUnpinContextMenuItem,
@@ -44,6 +41,7 @@ import {
   resolveThreadRowClassName,
   resolveThreadStatusPill,
   resolveWorkingStartedAt,
+  pullRequestMatchesSearchQuery,
   searchSidebarThreads,
   shouldClearThreadSelectionOnMouseDown,
   shouldShowSidebarV2Duration,
@@ -758,10 +756,6 @@ describe("orderItemsByPreferredIds", () => {
   });
 
   it("honors projectOrder physical keys via getProjectOrderKey", async () => {
-    // Regression guard for #1904 / the regression introduced by #2055:
-    // `projectOrder` is populated with physical keys (envId + cwd-derived)
-    // by the store and by drag-end handlers. Readers must identify projects
-    // with the same key format, or manual sort silently snaps back.
     const { getProjectOrderKey } = await import("../logicalProject");
     const projects = [
       {
@@ -998,6 +992,27 @@ describe("resolveSidebarThreadStatus", () => {
   });
 });
 
+describe("pullRequestMatchesSearchQuery", () => {
+  const branchPullRequest = {
+    projectId: ProjectId.make("project"),
+    repository: "pingdotgg/t3code",
+    number: 123,
+    url: "https://github.com/pingdotgg/t3code/pull/123",
+  };
+
+  it("matches when every query token appears in the PR's terms", () => {
+    expect(pullRequestMatchesSearchQuery({ branchPullRequest }, "123")).toBe(true);
+    expect(pullRequestMatchesSearchQuery({ branchPullRequest }, "pingdotgg/t3code #123")).toBe(
+      true,
+    );
+  });
+
+  it("rejects queries with a token the PR does not carry, and blank queries", () => {
+    expect(pullRequestMatchesSearchQuery({ branchPullRequest }, "rebase 123")).toBe(false);
+    expect(pullRequestMatchesSearchQuery({ branchPullRequest }, "   ")).toBe(false);
+  });
+});
+
 describe("searchSidebarThreads", () => {
   const searchThread = (id: string, title: string, project: string) => ({
     environmentId: localEnvironmentId,
@@ -1177,7 +1192,6 @@ describe("resolveWorkingStartedAt", () => {
           activityStartedAt,
         );
       }
-      // A server-owned run without a valid start must not borrow a local dispatch clock.
       expect(
         deriveActiveWorkStartedAt(
           latestRun,
@@ -1706,8 +1720,6 @@ describe("sortProjectsForSidebar", () => {
     "matches the per-comparison %s order on a shuffled list with ties",
     (sortOrder) => {
       const minute = (value: number) => `2026-03-09T10:0${value}:00.000Z`;
-      // (index * 7) % 24 scrambles the input order. Titles repeat, and
-      // projects 16-23 have no threads, so they use their own stamps.
       const projects = Array.from({ length: 24 }, (_, index) => {
         const n = (index * 7) % 24;
         return makeProject({
@@ -1723,8 +1735,6 @@ describe("sortProjectsForSidebar", () => {
         updatedAt: minute(n % 3),
         latestUserMessageAt: n % 4 === 0 ? null : minute(n % 5),
       }));
-      // The comparator this sort replaced: it walked each project's threads
-      // on every call.
       const timestamp = (project: Project) =>
         getProjectSortTimestamp(
           project,
@@ -1920,8 +1930,6 @@ describe("resolveThreadLastVisitedAt", () => {
   });
 
   it("keeps the server watermark authoritative when visited tracking exists", () => {
-    // A rewound server value (mark-unread) must win even over a newer local
-    // watermark left behind by earlier viewing on this device.
     expect(resolveThreadLastVisitedAt("2026-07-30T10:00:00.000Z", "2026-07-30T10:00:05.000Z")).toBe(
       "2026-07-30T10:00:00.000Z",
     );
@@ -1953,8 +1961,6 @@ describe("pinOrderKeyBetween", () => {
   });
 
   it("stays strictly ordered under repeated top insertion", () => {
-    // Every new pin lands at the head of the arranged run; keys must keep
-    // sorting before the previous head without ever bottoming out.
     let head: string | null = null;
     const keys: string[] = [];
     for (let i = 0; i < 100; i += 1) {
@@ -2032,54 +2038,6 @@ describe("resolveSidebarSweepKeys", () => {
   it("leaves out rows that cannot settle and rows that left the list", () => {
     expect(resolveSidebarSweepKeys(ordered, "c", "blocked", canSettle)).toEqual(["c", "d"]);
     expect(resolveSidebarSweepKeys(ordered, "gone", "a", canSettle)).toEqual([]);
-  });
-});
-
-describe("groupThreadsByProject", () => {
-  const projectOf = (thread: { readonly project: string }) => thread.project;
-
-  it("places each project's threads where its topmost thread was, keeping their order", () => {
-    const threads = [
-      { id: "a1", project: "a" },
-      { id: "b1", project: "b" },
-      { id: "a2", project: "a" },
-      { id: "c1", project: "c" },
-      { id: "b2", project: "b" },
-    ];
-
-    expect(groupThreadsByProject(threads, projectOf).map((thread) => thread.id)).toEqual([
-      "a1",
-      "a2",
-      "b1",
-      "b2",
-      "c1",
-    ]);
-  });
-
-  it("returns the same list when every thread is already its own group", () => {
-    const threads = [
-      { id: "a1", project: "a" },
-      { id: "b1", project: "b" },
-    ];
-
-    expect(groupThreadsByProject(threads, projectOf)).toBe(threads);
-  });
-});
-
-describe("resolveSidebarProjectGroupColor", () => {
-  it("gives a project the same palette color every time", () => {
-    const color = resolveSidebarProjectGroupColor("env-1:project-1");
-
-    expect(SIDEBAR_PROJECT_GROUP_COLORS).toContain(color);
-    expect(resolveSidebarProjectGroupColor("env-1:project-1")).toBe(color);
-  });
-
-  it("spreads different projects across the palette", () => {
-    const colors = new Set(
-      Array.from({ length: 50 }, (_, index) => resolveSidebarProjectGroupColor(`project-${index}`)),
-    );
-
-    expect(colors.size).toBeGreaterThan(SIDEBAR_PROJECT_GROUP_COLORS.length / 2);
   });
 });
 
@@ -2175,7 +2133,6 @@ describe("Working shelf (beta)", () => {
     latestRun: makeLatestRun(),
     runtime: null,
   };
-  // Stopped with background tasks still open: V2's "waiting" sidebar status.
   const waiting = {
     ...idle,
     runtime: { ...runtime, status: "idle" as const },
@@ -2288,8 +2245,6 @@ describe("Working shelf (beta)", () => {
     });
 
     it("arranges the rows it can write when another row's server cannot store an order", () => {
-      // None of the rows has a key yet, so the drop needs keys for its
-      // neighbors too. "offline" sits on a server that cannot take them.
       const plan = planSidebarThreadDrop({
         activeKey: "a2",
         activeSection: "active",
@@ -2314,7 +2269,6 @@ describe("Working shelf (beta)", () => {
       const [a2, a1] = plan.assignments.map(({ orderKey }) => orderKey);
       expect(a2! < a1!).toBe(true);
 
-      // A keyed row on that server still sorts by its key, so it stays a bound.
       const above = planSidebarThreadDrop({
         activeKey: "a2",
         activeSection: "active",

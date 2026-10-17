@@ -97,6 +97,7 @@ function layerDesktopWindow(
     dispatchSnapShotEvent: () => Effect.void,
     dispatchTouchBarAction: () => Effect.void,
     zoomMain: () => Effect.void,
+    runMainContentsCommand: () => Effect.void,
     syncAppearance: Effect.void,
   });
 }

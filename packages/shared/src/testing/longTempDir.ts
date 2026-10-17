@@ -1,6 +1,6 @@
 // @effect-diagnostics nodeBuiltinImport:off - runs once at test setup, outside any Effect runtime.
 import * as NodeFS from "node:fs";
-import { HostProcessPlatform } from "../hostProcess.ts";
+import * as HostProcess from "../HostProcess.ts";
 
 // Temp directories are compared against their canonical form throughout the
 // suites: sources under test resolve symlinks before comparing paths
@@ -13,7 +13,7 @@ import { HostProcessPlatform } from "../hostProcess.ts";
 // - macOS TMPDIR passes through the `/var` → `/private/var` symlink.
 // Node reads the temp-dir variables on every os.tmpdir() call, so pointing
 // them at the canonical form fixes every temp directory the suite makes.
-const platform = HostProcessPlatform.defaultValue();
+const platform = HostProcess.Platform.defaultValue();
 const candidates = platform === "win32" ? ["TEMP", "TMP"] : ["TMPDIR", "TEMP", "TMP"];
 for (const name of candidates) {
   const raw = process.env[name];

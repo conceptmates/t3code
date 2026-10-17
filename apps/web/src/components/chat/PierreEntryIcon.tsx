@@ -1,4 +1,4 @@
-import { memo, useInsertionEffect, useMemo } from "react";
+import { memo, useInsertionEffect } from "react";
 
 import { ensurePierreIconSprite, resolvePierreIconForEntry } from "../../pierre-icons";
 import { cn } from "~/lib/utils";
@@ -14,13 +14,13 @@ import { cn } from "~/lib/utils";
 export const PierreEntryIcon = memo(function PierreEntryIcon(props: {
   pathValue: string;
   kind: "file" | "directory";
+  mimeType?: string | undefined;
+  /** Accepted for call-site parity; Material artwork is the same in both themes. */
+  theme?: "light" | "dark";
   className?: string;
 }) {
   useInsertionEffect(ensurePierreIconSprite, []);
-  const icon = useMemo(
-    () => resolvePierreIconForEntry(props.pathValue, props.kind),
-    [props.kind, props.pathValue],
-  );
+  const icon = resolvePierreIconForEntry(props.pathValue, props.kind, props.mimeType);
 
   return (
     <svg
