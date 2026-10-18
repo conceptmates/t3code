@@ -143,11 +143,9 @@ import { Atom } from "effect/reactivity";
 import {
   Fragment,
   type SetStateAction,
-  useCallback,
   useEffect,
   useEffectEvent,
   useLayoutEffect,
-  useMemo,
   useRef,
   useState,
 } from "react";
@@ -1474,16 +1472,14 @@ export default function ChatView(props: ChatViewProps) {
       });
     }
   }
+  // Resolved outside the ternary: React Compiler bails out on `??` inside a
+  // conditional branch, and an uncompiled ChatView re-renders forever.
+  const fallbackDraftProjectId = fallbackDraftProject?.id ?? null;
+  const fallbackDraftModelSelection =
+    resolveProjectSettings(settings, fallbackDraftProjectId, fallbackDraftProject ?? undefined)
+      .settings.defaultModelSelection ?? NO_PROVIDER_MODEL_SELECTION;
   const localDraftThread = draftThread
-    ? buildLocalDraftThread(
-        threadId,
-        draftThread,
-        resolveProjectSettings(
-          settings,
-          fallbackDraftProject?.id ?? null,
-          fallbackDraftProject ?? undefined,
-        ).settings.defaultModelSelection ?? NO_PROVIDER_MODEL_SELECTION,
-      )
+    ? buildLocalDraftThread(threadId, draftThread, fallbackDraftModelSelection)
     : undefined;
   const isServerThread = serverThread !== null;
   const activeThread = isServerThread ? serverThread : localDraftThread;
@@ -3649,169 +3645,128 @@ export default function ChatView(props: ChatViewProps) {
         })
       : null,
   );
-  const launchEntries = useMemo(
-    () =>
-      launchConfigsQuery.data?.launchFile._tag === "valid"
-        ? launchConfigsQuery.data.entries
-        : EMPTY_LAUNCH_ENTRIES,
-    [launchConfigsQuery.data],
-  );
+  const launchEntries =
+    launchConfigsQuery.data?.launchFile._tag === "valid"
+      ? launchConfigsQuery.data.entries
+      : EMPTY_LAUNCH_ENTRIES;
   const launchStorageKey = gitCwd ? `t3code:launch:last-run:${gitCwd}` : null;
   const [lastLaunchNameByKey, setLastLaunchNameByKey] = useState<Record<string, string>>({});
   const lastLaunchName = launchStorageKey
     ? (lastLaunchNameByKey[launchStorageKey] ?? readLastLaunchName(launchStorageKey))
     : null;
-  const primaryLaunch = useMemo(
-    () => primaryLaunchEntry(launchEntries, lastLaunchName),
-    [launchEntries, lastLaunchName],
-  );
-  const launchSessions = useMemo(
-    () =>
-      selectLaunchSessions(
-        launchEntries,
-        (activeThreadKnownSessionsRaw ?? []).flatMap((session) =>
-          session.state.summary ? [session.state.summary] : [],
-        ),
-      ),
-    [activeThreadKnownSessionsRaw, launchEntries],
+  const primaryLaunch = primaryLaunchEntry(launchEntries, lastLaunchName);
+  const launchSessions = selectLaunchSessions(
+    launchEntries,
+    (activeThreadKnownSessionsRaw ?? []).flatMap((session) =>
+      session.state.summary ? [session.state.summary] : [],
+    ),
   );
   const writeTerminal = useAtomCommand(terminalEnvironment.write, "terminal write");
   const closeTerminalMutation = useAtomCommand(terminalEnvironment.close, "terminal close");
   const runLaunch = useAtomCommand(launchEnvironment.run, "launch run");
   const stopLaunch = useAtomCommand(launchEnvironment.stop, "launch stop");
   const [pendingLaunchInputs, setPendingLaunchInputs] = useState<LaunchInputsRequest | null>(null);
-  const runLaunchEntry = useCallback(
-    async (name: string, inputValues?: Record<string, string>) => {
-      if (!activeThreadRef || !gitCwd) return;
-      // Configurations with `${input:…}` ask for values before they run.
-      const entry = launchEntries.find((candidate) => candidate.name === name);
-      const missingInputIds = entry ? launchEntryMissingInputIds(entry) : [];
-      if (inputValues === undefined && missingInputIds.length > 0) {
-        setPendingLaunchInputs({
-          name,
-          prompts: (launchConfigsQuery.data?.inputs ?? []).filter((prompt) =>
-            missingInputIds.includes(prompt.id),
-          ),
-        });
-        return;
+  const runLaunchEntry = async (name: string, inputValues?: Record<string, string>) => {
+    if (!activeThreadRef || !gitCwd) return;
+    // Configurations with `${input:…}` ask for values before they run.
+    const entry = launchEntries.find((candidate) => candidate.name === name);
+    const missingInputIds = entry ? launchEntryMissingInputIds(entry) : [];
+    if (inputValues === undefined && missingInputIds.length > 0) {
+      setPendingLaunchInputs({
+        name,
+        prompts: (launchConfigsQuery.data?.inputs ?? []).filter((prompt) =>
+          missingInputIds.includes(prompt.id),
+        ),
+      });
+      return;
+    }
+    if (launchStorageKey) {
+      setLastLaunchNameByKey((current) =>
+        current[launchStorageKey] === name ? current : { ...current, [launchStorageKey]: name },
+      );
+      try {
+        setLocalStorageItem(launchStorageKey, name, Schema.String);
+      } catch {
+        // The in-memory choice still applies for this session.
       }
-      if (launchStorageKey) {
-        setLastLaunchNameByKey((current) =>
-          current[launchStorageKey] === name ? current : { ...current, [launchStorageKey]: name },
+    }
+    const result = await runLaunch({
+      environmentId: activeThreadRef.environmentId,
+      input: {
+        threadId: activeThreadRef.threadId,
+        cwd: gitCwd,
+        worktreePath: activeThread?.worktreePath ?? null,
+        name,
+        ...(inputValues === undefined ? {} : { inputValues }),
+      },
+    });
+    if (result._tag === "Failure") {
+      if (!isAtomCommandInterrupted(result)) {
+        const error = squashAtomCommandFailure(result);
+        setThreadError(
+          activeThreadRef.threadId,
+          error instanceof Error ? error.message : `Failed to run "${name}".`,
         );
-        try {
-          setLocalStorageItem(launchStorageKey, name, Schema.String);
-        } catch {
-          // The in-memory choice still applies for this session.
-        }
       }
-      const result = await runLaunch({
-        environmentId: activeThreadRef.environmentId,
-        input: {
-          threadId: activeThreadRef.threadId,
-          cwd: gitCwd,
-          worktreePath: activeThread?.worktreePath ?? null,
-          name,
-          ...(inputValues === undefined ? {} : { inputValues }),
-        },
-      });
-      if (result._tag === "Failure") {
-        if (!isAtomCommandInterrupted(result)) {
-          const error = squashAtomCommandFailure(result);
-          setThreadError(
-            activeThreadRef.threadId,
-            error instanceof Error ? error.message : `Failed to run "${name}".`,
-          );
-        }
-        return;
-      }
-      const lastSession = result.value.sessions.at(-1);
-      if (lastSession) {
-        storeEnsureTerminal(activeThreadRef, lastSession.terminalId, { open: true, active: true });
-      }
-    },
-    [
-      activeThread,
-      activeThreadRef,
-      gitCwd,
-      launchConfigsQuery.data,
-      launchEntries,
-      launchStorageKey,
-      runLaunch,
-      setThreadError,
-      storeEnsureTerminal,
-    ],
-  );
-  const stopLaunchSession = useCallback(
-    (session: LaunchSessionView) => {
-      if (!activeThreadRef) return;
-      void stopLaunch({
-        environmentId: activeThreadRef.environmentId,
-        input: { threadId: activeThreadRef.threadId, terminalId: session.terminalId },
-      });
-    },
-    [activeThreadRef, stopLaunch],
-  );
-  const restartLaunchSession = useCallback(
-    (session: LaunchSessionView) => {
-      if (session.entryName) void runLaunchEntry(session.entryName);
-    },
-    [runLaunchEntry],
-  );
+      return;
+    }
+    const lastSession = result.value.sessions.at(-1);
+    if (lastSession) {
+      storeEnsureTerminal(activeThreadRef, lastSession.terminalId, { open: true, active: true });
+    }
+  };
+  const stopLaunchSession = (session: LaunchSessionView) => {
+    if (!activeThreadRef) return;
+    void stopLaunch({
+      environmentId: activeThreadRef.environmentId,
+      input: { threadId: activeThreadRef.threadId, terminalId: session.terminalId },
+    });
+  };
+  const restartLaunchSession = (session: LaunchSessionView) => {
+    if (session.entryName) void runLaunchEntry(session.entryName);
+  };
   // Hiding leaves the process running; the bar keeps the session either way.
-  const toggleLaunchTerminal = useCallback(
-    (session: LaunchSessionView, visible: boolean) => {
-      if (!activeThreadRef) return;
-      if (visible) {
-        storeSetTerminalOpen(activeThreadRef, false);
-        return;
-      }
-      storeEnsureTerminal(activeThreadRef, session.terminalId, { open: true, active: true });
-    },
-    [activeThreadRef, storeEnsureTerminal, storeSetTerminalOpen],
-  );
-  const dismissLaunchSession = useCallback(
-    (session: LaunchSessionView) => {
-      if (!activeThreadRef) return;
-      void closeTerminalMutation({
-        environmentId: activeThreadRef.environmentId,
-        input: { threadId: activeThreadRef.threadId, terminalId: session.terminalId },
-      });
-    },
-    [activeThreadRef, closeTerminalMutation],
-  );
+  const toggleLaunchTerminal = (session: LaunchSessionView, visible: boolean) => {
+    if (!activeThreadRef) return;
+    if (visible) {
+      storeSetTerminalOpen(activeThreadRef, false);
+      return;
+    }
+    storeEnsureTerminal(activeThreadRef, session.terminalId, { open: true, active: true });
+  };
+  const dismissLaunchSession = (session: LaunchSessionView) => {
+    if (!activeThreadRef) return;
+    void closeTerminalMutation({
+      environmentId: activeThreadRef.environmentId,
+      input: { threadId: activeThreadRef.threadId, terminalId: session.terminalId },
+    });
+  };
   // Flutter's `flutter run` reads `r` (hot reload) and `R` (hot restart) from stdin.
-  const hotReloadLaunchSession = useCallback(
-    (session: LaunchSessionView, mode: "reload" | "restart") => {
-      if (!activeThreadRef) return;
-      void writeTerminal({
-        environmentId: activeThreadRef.environmentId,
-        input: {
-          threadId: activeThreadRef.threadId,
-          terminalId: session.terminalId,
-          data: mode === "reload" ? "r" : "R",
-        },
-      });
-    },
-    [activeThreadRef, writeTerminal],
-  );
-  const openLaunchJson = useCallback(() => {
+  const hotReloadLaunchSession = (session: LaunchSessionView, mode: "reload" | "restart") => {
+    if (!activeThreadRef) return;
+    void writeTerminal({
+      environmentId: activeThreadRef.environmentId,
+      input: {
+        threadId: activeThreadRef.threadId,
+        terminalId: session.terminalId,
+        data: mode === "reload" ? "r" : "R",
+      },
+    });
+  };
+  const openLaunchJson = () => {
     if (activeThreadRef) {
       useRightPanelStore.getState().openFile(activeThreadRef, ".vscode/launch.json");
     }
-  }, [activeThreadRef]);
+  };
   // Drafts the request instead of sending it, so the user decides whether an agent installs anything.
-  const askAgentToInstallToolchain = useCallback(
-    (binary: string) => {
-      const composer = composerRef.current;
-      if (!composer) return;
-      const prompt = `Install \`${binary}\` on this machine so it's on the PATH the T3 Code server uses, then run \`${binary} --version\` to confirm.`;
-      if (composer.insertTextAtEnd(prompt, { ensureLeadingBoundary: true })) {
-        composer.focusAtEnd();
-      }
-    },
-    [composerRef],
-  );
+  const askAgentToInstallToolchain = (binary: string) => {
+    const composer = composerRef.current;
+    if (!composer) return;
+    const prompt = `Install \`${binary}\` on this machine so it's on the PATH the T3 Code server uses, then run \`${binary} --version\` to confirm.`;
+    if (composer.insertTextAtEnd(prompt, { ensureLeadingBoundary: true })) {
+      composer.focusAtEnd();
+    }
+  };
   const runProjectScriptRef = useRef(runProjectScriptStable);
   useLayoutEffect(() => {
     runProjectScriptRef.current = runProjectScriptStable;
@@ -4897,13 +4852,15 @@ export default function ChatView(props: ChatViewProps) {
     setPendingServerThreadEnvModeEntry(null);
     setPendingServerThreadBranchEntry(null);
   }
+  const pendingEntryThreadId = activeThread?.id;
   const pendingServerThreadEnvMode =
     pendingServerThreadEnvModeEntry !== null &&
-    pendingServerThreadEnvModeEntry.threadId === activeThread?.id
+    pendingServerThreadEnvModeEntry.threadId === pendingEntryThreadId
       ? pendingServerThreadEnvModeEntry.mode
       : null;
   const pendingServerThreadBranchEntryForThread =
-    pendingServerThreadBranchEntry?.threadId === activeThread?.id
+    pendingServerThreadBranchEntry !== null &&
+    pendingServerThreadBranchEntry.threadId === pendingEntryThreadId
       ? pendingServerThreadBranchEntry
       : null;
   const setPendingServerThreadBranch = (branch: string | null) => {
@@ -7803,35 +7760,26 @@ export default function ChatView(props: ChatViewProps) {
   // so it survives the project picker and settings. Only the run button and the
   // provider selection need a thread, so they are published from here and
   // cleared on the way out.
-  const touchBarRun = useMemo(
-    () =>
-      buildRunState({
-        primaryLaunchEntry: primaryLaunch ?? null,
-        launchSessions,
-        launchBlockedReason: primaryLaunch ? launchEntryBlockedReason(primaryLaunch) : null,
-      }),
-    [launchSessions, primaryLaunch],
-  );
-  const onTouchBarRunToggle = useCallback(() => {
+  const touchBarRun = buildRunState({
+    primaryLaunchEntry: primaryLaunch ?? null,
+    launchSessions,
+    launchBlockedReason: primaryLaunch ? launchEntryBlockedReason(primaryLaunch) : null,
+  });
+  const onTouchBarRunToggle = () => {
     const running = launchSessions.find((session) => session.running);
     if (running) {
       stopLaunchSession(running);
       return;
     }
     if (primaryLaunch) void runLaunchEntry(primaryLaunch.name);
-  }, [launchSessions, primaryLaunch, runLaunchEntry, stopLaunchSession]);
-  const onTouchBarSelectProvider = useCallback(
-    (instanceId: string) => {
-      const entry = providerInstanceEntries.find(
-        (candidate) => candidate.instanceId === instanceId,
-      );
-      if (!entry) return;
-      // No model argument: a one-tap switch should land on the instance's
-      // default rather than guess which of its models the user wanted.
-      onProviderModelSelectStable(entry.instanceId, "", { focusComposer: false });
-    },
-    [onProviderModelSelectStable, providerInstanceEntries],
-  );
+  };
+  const onTouchBarSelectProvider = (instanceId: string) => {
+    const entry = providerInstanceEntries.find((candidate) => candidate.instanceId === instanceId);
+    if (!entry) return;
+    // No model argument: a one-tap switch should land on the instance's
+    // default rather than guess which of its models the user wanted.
+    onProviderModelSelectStable(entry.instanceId, "", { focusComposer: false });
+  };
   const publishTouchBarSlice = useTouchBarThreadStore((store) => store.publish);
   const clearTouchBarSlice = useTouchBarThreadStore((store) => store.clear);
   useEffect(() => {
