@@ -9,6 +9,7 @@ import {
 } from "@t3tools/contracts";
 import { errorTag } from "@t3tools/shared/observability";
 import * as Cause from "effect/Cause";
+import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
@@ -33,6 +34,7 @@ import * as ElectronUpdater from "../electron/ElectronUpdater.ts";
 import * as ElectronWindow from "../electron/ElectronWindow.ts";
 import * as IpcChannels from "../ipc/channels.ts";
 import * as DesktopAppSettings from "../settings/DesktopAppSettings.ts";
+import * as ForkUpdates from "./ForkUpdates.ts";
 import { normalizeDesktopUpdateReleaseNotes } from "./releaseNotes.ts";
 import { resolveDefaultDesktopUpdateChannel } from "./updateChannels.ts";
 import {
@@ -51,6 +53,7 @@ import {
 
 const AUTO_UPDATE_STARTUP_DELAY = "15 seconds";
 const AUTO_UPDATE_POLL_INTERVAL = "4 minutes";
+const FORK_IDLE_INSTALL_POLL_INTERVAL = "2 minutes";
 const PREPARED_INSTALL_CHECK_WAIT = Duration.seconds(90);
 
 type UpdateAction = "check" | "download" | "install" | "install-recovery" | "channel";
@@ -338,7 +341,11 @@ export const make = Effect.gen(function* () {
   const config = yield* DesktopConfig.DesktopConfig;
   const pool = yield* DesktopBackendPool.DesktopBackendPool;
   const desktopState = yield* DesktopState.DesktopState;
-  const electronUpdater = yield* ElectronUpdater.ElectronUpdater;
+  const forkUpdates = yield* ForkUpdates.ForkUpdates;
+  // Fork builds swap electron-updater for a local merge-and-build engine behind the same interface.
+  const electronUpdater = Option.isSome(forkUpdates)
+    ? forkUpdates.value.updater
+    : yield* ElectronUpdater.ElectronUpdater;
   const electronWindow = yield* ElectronWindow.ElectronWindow;
   const environment = yield* DesktopEnvironment.DesktopEnvironment;
   const fileSystem = yield* FileSystem.FileSystem;
@@ -408,7 +415,10 @@ export const make = Effect.gen(function* () {
       : false;
 
   const hasUpdateFeedConfig = Ref.get(appUpdateYmlConfigRef).pipe(
-    Effect.map((appUpdateYmlConfig) => Option.isSome(appUpdateYmlConfig) || config.mockUpdates),
+    Effect.map(
+      (appUpdateYmlConfig) =>
+        Option.isSome(appUpdateYmlConfig) || config.mockUpdates || Option.isSome(forkUpdates),
+    ),
   );
 
   const resolveDisabledReason = Effect.gen(function* () {
@@ -578,6 +588,18 @@ export const make = Effect.gen(function* () {
       Effect.ensuring(finishUpdateAction("download")),
     );
   }).pipe(Effect.withSpan("desktop.updates.downloadAvailableUpdate"));
+
+  // Fork updates build in the background as soon as they are found, like an auto-download.
+  // The update-available event fires while the check still holds the action slot.
+  const downloadWhenCheckFinishes = Effect.scoped(
+    Effect.gen(function* () {
+      const finished = yield* PubSub.subscribe(finishedUpdateActions);
+      while (Option.isSome(yield* activeUpdateAction)) {
+        yield* PubSub.take(finished);
+      }
+      yield* downloadAvailableUpdate;
+    }),
+  ).pipe(Effect.withSpan("desktop.updates.downloadForkUpdate"));
 
   const updateRestartMarkerDir = environment.path.join(environment.baseDir, "runtime");
   const updateRestartMarkerPath = environment.path.join(
@@ -810,9 +832,56 @@ export const make = Effect.gen(function* () {
     };
   });
 
+  // A fork update is a local merge and build, so automatic checks wait out the fork's interval;
+  // a check the user asks for always runs.
+  const automaticCheck = (reason: "startup" | "poll") =>
+    Option.isSome(forkUpdates)
+      ? forkUpdates.value.automaticCheckDue.pipe(
+          Effect.flatMap((due) => (due ? checkForUpdates(reason) : Effect.succeed(false))),
+        )
+      : checkForUpdates(reason);
+
+  const forkIdleSinceRef = yield* Ref.make(Option.none<number>());
+  const installForkUpdateWhenIdle = Effect.fn("desktop.updates.installForkUpdateWhenIdle")(
+    function* (fork: ForkUpdates.ForkUpdateEngine) {
+      const state = yield* Ref.get(updateStateRef);
+      if (state.status !== "downloaded" || state.downloadedVersion === null) {
+        return yield* Ref.set(forkIdleSinceRef, Option.none());
+      }
+      if (!(yield* fork.idleForInstall)) {
+        return yield* Ref.set(forkIdleSinceRef, Option.none());
+      }
+      const now = yield* Clock.currentTimeMillis;
+      const idleSince = yield* Ref.get(forkIdleSinceRef);
+      if (Option.isNone(idleSince)) {
+        yield* logUpdaterInfo("idle; restarting into the fork update if it stays that way");
+        return yield* Ref.set(forkIdleSinceRef, Option.some(now));
+      }
+      if (now - idleSince.value < ForkUpdates.FORK_INSTALL_IDLE_SECONDS * 1000) return;
+      yield* logUpdaterInfo("restarting into the fork update while idle", {
+        version: state.downloadedVersion,
+      });
+      yield* installWithExpectedVersion(state.downloadedVersion);
+    },
+  );
+
   const startUpdatePollers: Effect.Effect<void, never, Scope.Scope> = Effect.gen(function* () {
+    if (Option.isSome(forkUpdates)) {
+      yield* Effect.sleep(FORK_IDLE_INSTALL_POLL_INTERVAL).pipe(
+        Effect.andThen(installForkUpdateWhenIdle(forkUpdates.value)),
+        Effect.forever,
+        Effect.catchCause((cause) =>
+          Cause.hasInterruptsOnly(cause)
+            ? Effect.void
+            : logUpdaterError("Fork idle install poller failed.", {
+                cause: describeUpdateErrorCause(cause),
+              }),
+        ),
+        Effect.forkScoped,
+      );
+    }
     yield* Effect.sleep(AUTO_UPDATE_STARTUP_DELAY).pipe(
-      Effect.andThen(checkForUpdates("startup")),
+      Effect.andThen(automaticCheck("startup")),
       Effect.catchCause((cause) => {
         if (Cause.hasInterruptsOnly(cause)) {
           return Effect.void;
@@ -827,7 +896,7 @@ export const make = Effect.gen(function* () {
       Effect.forkScoped,
     );
     yield* Effect.sleep(AUTO_UPDATE_POLL_INTERVAL).pipe(
-      Effect.andThen(checkForUpdates("poll")),
+      Effect.andThen(automaticCheck("poll")),
       Effect.forever,
       Effect.catchCause((cause) => {
         if (Cause.hasInterruptsOnly(cause)) {
@@ -883,6 +952,9 @@ export const make = Effect.gen(function* () {
             releaseNoteGroups: releaseNotes.length,
             omittedReleaseCount,
           });
+          if (Option.isSome(forkUpdates)) {
+            yield* Effect.forkDetach(downloadWhenCheckFinishes);
+          }
         }),
       ),
       Effect.catchCause((cause) => {
