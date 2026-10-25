@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import Animated, {
   runOnJS,
   useAnimatedStyle,
@@ -12,10 +12,7 @@ import { RenderErrorBoundary, RenderFailureView } from "../../components/RenderE
 import { WORKSPACE_PANE_TIMING } from "./workspace-pane-animation";
 import { WorkspacePaneDivider } from "./workspace-pane-divider";
 
-/**
- * Receives the pane layout via props (not the workspace context hook) so this module stays
- * import-cycle-free with AdaptiveWorkspaceLayout.
- */
+/** Pass layout props to avoid an import cycle with AdaptiveWorkspaceLayout. */
 export function WorkspaceInspectorPane(props: {
   readonly pathname: string;
   readonly renderedInspectorWidth: SharedValue<number>;
@@ -49,9 +46,9 @@ export function WorkspaceInspectorPane(props: {
       },
     );
     const targetWidth = inspectorVisible ? (inspectorWidth ?? 0) : 0;
-    renderedInspectorWidth.value = resizing
-      ? targetWidth
-      : withTiming(targetWidth, WORKSPACE_PANE_TIMING);
+    renderedInspectorWidth.set(
+      resizing ? targetWidth : withTiming(targetWidth, WORKSPACE_PANE_TIMING),
+    );
   }, [
     inspectorProgress,
     inspectorVisible,
@@ -79,24 +76,21 @@ export function WorkspaceInspectorPane(props: {
     [],
   );
   const inspectorContentStyle = useAnimatedStyle(() => ({ width: renderedContentWidth.value }), []);
-  const beginResize = useCallback(() => {
+  const beginResize = () => {
     resizeStartWidth.current = inspectorWidth ?? 0;
     setResizing(true);
-  }, [inspectorWidth]);
-  const resizeBy = useCallback(
-    (delta: number) => {
-      setAuxiliaryPaneWidth(
-        constrainAuxiliaryPaneWidth({
-          preferredWidth: resizeStartWidth.current + delta,
-          availableWidth: panes.contentPaneWidth,
-        }),
-      );
-    },
-    [panes.contentPaneWidth, setAuxiliaryPaneWidth],
-  );
-  const endResize = useCallback(() => {
+  };
+  const resizeBy = (delta: number) => {
+    setAuxiliaryPaneWidth(
+      constrainAuxiliaryPaneWidth({
+        preferredWidth: resizeStartWidth.current + delta,
+        availableWidth: panes.contentPaneWidth,
+      }),
+    );
+  };
+  const endResize = () => {
     setResizing(false);
-  }, []);
+  };
 
   return (
     <>
@@ -135,8 +129,6 @@ export function WorkspaceInspectorPane(props: {
   );
 }
 
-// The render callback must run inside the boundary's child, not while its
-// parent constructs the boundary element.
 function InspectorRenderer(props: { readonly render?: () => ReactNode }) {
   return <>{props.render?.()}</>;
 }

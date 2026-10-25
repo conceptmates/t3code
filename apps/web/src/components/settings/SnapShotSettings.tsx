@@ -13,7 +13,7 @@ import * as Cause from "effect/Cause";
 import { useEffect, useRef, useState } from "react";
 
 import { useStableCallback } from "../../hooks/useStableCallback";
-import { useClientSettings, useUpdateClientSettings } from "../../hooks/useSettings";
+import { useClientSettings, updateClientSettings } from "../../hooks/useSettings";
 import { getDesktopSnapShotBridge } from "../../lib/desktopSnapShot";
 import {
   readSnapShotSetupResume,
@@ -86,7 +86,6 @@ export function SnapShotSettings() {
     snapShotShortcut: current.snapShotShortcut,
     snapShotSound: current.snapShotSound,
   }));
-  const updateSettings = useUpdateClientSettings();
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
   const bridge = getDesktopSnapShotBridge();
   const [state, setState] = useState<DesktopSnapShotState | null>(null);
@@ -103,8 +102,6 @@ export function SnapShotSettings() {
     status: "idle",
     availability: null,
   });
-  // A check answers for one shortcut; once the candidate moves on (an edit, or hydration
-  // resetting it) a late answer for the old one no longer shows.
   const shortcutCheck: ShortcutCheck =
     latestShortcutCheck.status === "idle" ||
     sameSnapShotShortcut(latestShortcutCheck.shortcut, candidate)
@@ -128,7 +125,6 @@ export function SnapShotSettings() {
   const soundLabel =
     soundSelection === "off" ? "Off" : soundSelection === "soft-pop" ? "Whoosh (Default)" : "Click";
 
-  // Registered as a window focus listener, so it keeps one identity.
   const refreshState = useStableCallback(async () => {
     const requestId = ++stateRequestIdRef.current;
     try {
@@ -172,8 +168,6 @@ export function SnapShotSettings() {
     setSetupBusy(false);
   };
 
-  // Outside the wizard there is nowhere to show an error inline, so it goes to a toast,
-  // once. The error stays in state until the next action clears it.
   const toastedErrorRef = useRef<typeof setupError>(null);
   useEffect(() => {
     if (!setupError || wizard || toastedErrorRef.current === setupError) return;
@@ -215,7 +209,6 @@ export function SnapShotSettings() {
     setCandidate(savedShortcut);
     setShortcutCheck({ status: "idle", availability: null });
   }
-  // A check still in flight was for the shortcut being replaced.
   const checkedForSavedShortcutRef = useRef(savedShortcut);
   useEffect(() => {
     if (sameSnapShotShortcut(checkedForSavedShortcutRef.current, savedShortcut)) return;
@@ -226,7 +219,7 @@ export function SnapShotSettings() {
   const save = async (patch: ClientSettingsPatch) => {
     setSetupError(null);
     try {
-      await updateSettings(patch);
+      await updateClientSettings(patch);
       return await refreshState();
     } catch (error) {
       setSetupError(captureSettingsError("Couldn't save capture settings", error));
@@ -323,8 +316,7 @@ export function SnapShotSettings() {
     if (!settings.snapShotEnabled && captureSetupInitialStep(current, requested) !== "access") {
       current = await save({ snapShotEnabled: true });
       if (!current) {
-        // A settings write can succeed even if the following status check
-        // fails. Keep Finish later available to turn capture back off.
+        // Settings may save before status checking fails; keep Finish later available to disable capture.
         setWizard({ initialStep: "access", wasEnabled: false });
         return;
       }

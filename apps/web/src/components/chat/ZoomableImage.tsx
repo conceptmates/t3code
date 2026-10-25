@@ -1,6 +1,18 @@
 import { useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type Ref } from "react";
 
+import {
+  onWindowControlsOverlayGeometryChange,
+  windowControlsOverlayHeight,
+} from "../../lib/windowControlsOverlay";
+
+import { AttachmentImage } from "../media/AttachmentImage";
+
 const MAX_ZOOM = 8;
+
+// Subtract the caption strip, matching dialog CSS's --native-titlebar-height.
+function readViewerSize() {
+  return { width: window.innerWidth, height: window.innerHeight - windowControlsOverlayHeight() };
+}
 
 export interface ZoomableImageHandle {
   pan: (key: string) => boolean;
@@ -9,20 +21,19 @@ export interface ZoomableImageHandle {
 export function ZoomableImage({
   src,
   name,
+  mimeType,
   onError,
   ref,
 }: {
   src: string;
   name: string;
+  mimeType?: string | undefined;
   onError: () => void;
   ref?: Ref<ZoomableImageHandle>;
 }) {
   const viewportRef = useRef<HTMLDivElement>(null);
   const [naturalSize, setNaturalSize] = useState({ width: 0, height: 0 });
-  const [windowSize, setWindowSize] = useState(() => ({
-    width: window.innerWidth,
-    height: window.innerHeight,
-  }));
+  const [viewerSize, setViewerSize] = useState(readViewerSize);
   const [zoom, setZoom] = useState(1);
   const zoomRef = useRef(1);
   const anchorRef = useRef<{ x: number; y: number; clientX: number; clientY: number } | null>(null);
@@ -35,10 +46,10 @@ export function ZoomableImage({
   } | null>(null);
   const suppressClickRef = useRef(false);
   const [dragging, setDragging] = useState(false);
-  const maxHeight = Math.max(1, Math.min(windowSize.height * 0.86, windowSize.height - 160));
+  const maxHeight = Math.max(1, Math.min(viewerSize.height * 0.86, viewerSize.height - 160));
   const fit = Math.min(
     1,
-    (windowSize.width * 0.92 - (windowSize.width >= 640 ? 96 : 0)) / (naturalSize.width || 1),
+    (viewerSize.width * 0.92 - (viewerSize.width >= 640 ? 96 : 0)) / (naturalSize.width || 1),
     maxHeight / (naturalSize.height || 1),
   );
   const width = naturalSize.width * fit * zoom;
@@ -108,11 +119,16 @@ export function ZoomableImage({
 
   useEffect(() => {
     const resize = () => {
-      setWindowSize({ width: window.innerWidth, height: window.innerHeight });
+      setViewerSize(readViewerSize());
       changeZoom(1);
     };
     window.addEventListener("resize", resize);
-    return () => window.removeEventListener("resize", resize);
+    // Fullscreen caption-strip changes may not emit resize.
+    const stopOverlayListener = onWindowControlsOverlayGeometryChange(resize);
+    return () => {
+      window.removeEventListener("resize", resize);
+      stopOverlayListener();
+    };
   }, [changeZoom]);
 
   useEffect(() => {
@@ -149,7 +165,7 @@ export function ZoomableImage({
           cursor: zoom > 1 ? (dragging ? "grabbing" : "grab") : "zoom-in",
         }}
         onClick={(event) => {
-          // Pointer capture also produces a click after dragging; leave the image zoomed.
+          // Pointer capture emits a click after dragging; preserve zoom.
           if (suppressClickRef.current || event.detail > 1) return;
           changeZoom(zoomRef.current > 1 ? 1 : 2, { x: event.clientX, y: event.clientY });
         }}
@@ -213,7 +229,9 @@ export function ZoomableImage({
           setDragging(false);
         }}
       >
-        <img
+        <AttachmentImage
+          name={name}
+          mimeType={mimeType}
           src={src}
           alt={name}
           draggable={false}
