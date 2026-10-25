@@ -150,6 +150,21 @@ var x = 1;
     assert.deepStrictEqual(result.inlinedPackages, ["effect", "yaml"]);
     assert.deepStrictEqual(result.inlined, []);
   });
+
+  it("reads the bare `// <path>` markers rolldown writes since vite-plus 1.4", () => {
+    const source = [
+      "// src/entrypoint.ts",
+      "const isEntrypoint = true;",
+      "// ../../node_modules/.pnpm/node-addon-api@7.1.1/node_modules/node-addon-api/index.js",
+      "var x = 1;",
+      "// keep ordinary comments out of the count",
+      "//# sourceMappingURL=bin.mjs.map",
+    ].join("\n");
+    const result = findInlinedExternalPackages(source);
+
+    assert.strictEqual(result.regionCount, 2);
+    assert.deepStrictEqual(result.inlined, ["node-addon-api"]);
+  });
 });
 
 describe("findEsmImportsOfExternalPackages", () => {
