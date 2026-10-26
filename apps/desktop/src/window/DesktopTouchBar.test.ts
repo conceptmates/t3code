@@ -61,8 +61,8 @@ const layerFor = (
       Layer.succeed(ElectronWindow.ElectronWindow, {
         create: () => Effect.die("unexpected window create"),
         main: Effect.succeed(window === null ? Option.none() : Option.some(window)),
-        currentMainOrFirst: Effect.succeed(Option.none()),
-        focusedMainOrFirst: Effect.succeed(Option.none()),
+        currentMainOrFirst: Effect.succeedNone,
+        focusedMainOrFirst: Effect.succeedNone,
         setMain: () => Effect.void,
         clearMain: () => Effect.void,
         prepareReveal: () => Effect.succeed(false),

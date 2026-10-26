@@ -101,9 +101,9 @@ it.layer(NodeServices.layer)("external package dependency closure", (it) => {
         if (!manifest) continue;
 
         const declared = {
-          ...(manifest.dependencies ?? {}),
-          ...(manifest.optionalDependencies ?? {}),
-          ...(manifest.peerDependencies ?? {}),
+          ...manifest.dependencies,
+          ...manifest.optionalDependencies,
+          ...manifest.peerDependencies,
         };
         for (const dependency of Object.keys(declared)) {
           if (!isRuntimeExternal(dependency)) {
@@ -151,18 +151,18 @@ var x = 1;
     assert.deepStrictEqual(result.inlined, []);
   });
 
-  it("reads the bare `// <path>` markers rolldown writes since vite-plus 1.4", () => {
+  it("reads the plain `// <path>` markers newer Rolldown emits", () => {
     const source = [
-      "// src/entrypoint.ts",
-      "const isEntrypoint = true;",
-      "// ../../node_modules/.pnpm/node-addon-api@7.1.1/node_modules/node-addon-api/index.js",
+      "// \0rolldown/runtime.js",
       "var x = 1;",
-      "// keep ordinary comments out of the count",
-      "//# sourceMappingURL=bin.mjs.map",
+      "// ../../node_modules/.pnpm/node-addon-api@7.1.1/node_modules/node-addon-api/index.js",
+      "var y = 2; // trailing comment",
+      "// ../../src/server/main.ts",
+      "",
     ].join("\n");
     const result = findInlinedExternalPackages(source);
 
-    assert.strictEqual(result.regionCount, 2);
+    assert.strictEqual(result.regionCount, 3);
     assert.deepStrictEqual(result.inlined, ["node-addon-api"]);
   });
 });

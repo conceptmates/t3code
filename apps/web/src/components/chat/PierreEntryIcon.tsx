@@ -1,7 +1,10 @@
-import { memo, useInsertionEffect } from "react";
+import { memo } from "react";
 
 import { ensurePierreIconSprite, resolvePierreIconForEntry } from "../../pierre-icons";
 import { cn } from "~/lib/utils";
+
+// Every icon references the one shared sprite, so it is in the document before any renders.
+ensurePierreIconSprite();
 
 /**
  * The file and folder glyph for our own chrome — breadcrumbs, pickers, chips,
@@ -19,7 +22,6 @@ export const PierreEntryIcon = memo(function PierreEntryIcon(props: {
   theme?: "light" | "dark";
   className?: string;
 }) {
-  useInsertionEffect(ensurePierreIconSprite, []);
   const icon = resolvePierreIconForEntry(props.pathValue, props.kind, props.mimeType);
 
   return (

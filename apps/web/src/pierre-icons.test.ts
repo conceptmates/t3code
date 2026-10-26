@@ -2,6 +2,7 @@ import { assert, describe, it } from "vite-plus/test";
 
 import { MATERIAL_ICON_SPRITE } from "./materialIcons.generated";
 import {
+  documentIconColorForFileName,
   hasSpecificPierreIconForFileName,
   resolvePierreIconForEntry,
   syntheticFileNameForLanguageId,
@@ -45,6 +46,30 @@ describe("file icon resolution", () => {
       resolvePierreIconForEntry("unknown", "file", "application/octet-stream").name,
       "mi-file",
     );
+  });
+
+  it.each(["photo.heic", "photo.heif", "PHOTO.HEIC", "folder/photo.HEIF"])(
+    "uses the image icon for %s",
+    (name) => {
+      assert.equal(resolvePierreIconForEntry(name, "file").name, "mi-image");
+      assert.isTrue(hasSpecificPierreIconForFileName(name));
+    },
+  );
+
+  it.each([
+    ["pdf", "mi-pdf"],
+    ["docx", "mi-word"],
+    ["odt", "mi-word"],
+    ["xlsx", "mi-table"],
+    ["csv", "mi-table"],
+    ["pptx", "mi-powerpoint"],
+    ["epub", "mi-epub"],
+  ])("gives %s documents their family icon and accent color", (extension, icon) => {
+    for (const path of [`report.${extension}`, `folder/REPORT.${extension.toUpperCase()}`]) {
+      assert.equal(resolvePierreIconForEntry(path, "file").name, icon);
+      assert.isString(documentIconColorForFileName(path));
+    }
+    assert.isUndefined(documentIconColorForFileName("src/index.ts"));
   });
 
   it("uses the generic file glyph for unknown types", () => {

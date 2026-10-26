@@ -88,7 +88,7 @@ export const make = Effect.gen(function* () {
 
   const readOptionalFile = (filePath: string) =>
     fileSystem.readFileString(filePath).pipe(
-      Effect.map(Option.some),
+      Effect.asSome,
       Effect.catchTag("PlatformError", (error) =>
         error.reason._tag === "NotFound"
           ? Effect.succeed(Option.none<string>())

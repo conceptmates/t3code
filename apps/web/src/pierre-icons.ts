@@ -1,5 +1,5 @@
 import { getBuiltInSpriteSheet, type FileTreeIcons } from "@pierre/trees";
-import { fileIconPathForMimeType } from "@t3tools/shared/filePreview";
+import { fileIconPathForMimeType } from "@t3tools/shared/mediaPreview";
 
 import {
   MATERIAL_DEFAULT_FILE_ICON,
@@ -16,6 +16,14 @@ export interface PierreIconResolution {
 }
 
 const PIERRE_ICON_SPRITE_ID = "t3code-pierre-file-icon-sprite";
+
+const DOCUMENT_ICON_COLORS: Readonly<Record<string, string>> = {
+  "mi-pdf": "light-dark(#d52c36, #ff6762)",
+  "mi-word": "light-dark(#1a85d4, #69b1ff)",
+  "mi-table": "light-dark(#199f43, #5ecc71)",
+  "mi-powerpoint": "light-dark(#d47628, #ffa359)",
+  "mi-epub": "light-dark(#693acf, #9d6afb)",
+};
 
 /** Our own tree glyphs, appended to the generated Material sheet. */
 const T3_TREE_ICON_SYMBOLS = `
@@ -161,13 +169,22 @@ export function resolvePierreIconForEntry(
   return { name: symbol ?? MATERIAL_DEFAULT_FILE_ICON };
 }
 
+export function documentIconColorForFileName(fileName: string) {
+  return DOCUMENT_ICON_COLORS[resolvePierreIconForEntry(fileName, "file").name];
+}
+
 /** False when a name only reaches the generic file glyph, so callers can hide it. */
 export function hasSpecificPierreIconForFileName(fileName: string, _isDesktop = false): boolean {
   return resolveFileSymbol(basenameOfPath(fileName)) !== null;
 }
 
 export function ensurePierreIconSprite(): void {
-  if (typeof document === "undefined" || document.getElementById(PIERRE_ICON_SPRITE_ID)) return;
+  if (
+    typeof document === "undefined" ||
+    !document.body ||
+    document.getElementById(PIERRE_ICON_SPRITE_ID)
+  )
+    return;
   const container = document.createElement("div");
   container.id = PIERRE_ICON_SPRITE_ID;
   container.setAttribute("aria-hidden", "true");
