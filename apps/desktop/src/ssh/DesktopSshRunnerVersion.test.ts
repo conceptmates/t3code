@@ -61,7 +61,10 @@ describe("SSH remote archive version", () => {
           makeHttpClientLayer((request) =>
             request.method === "HEAD"
               ? respond(request, 404)
-              : respond(request, 200, RELEASE_INDEX),
+              : // Like api.github.com, which refuses requests that carry no User-Agent.
+                request.headers["user-agent"] === undefined
+                ? respond(request, 403)
+                : respond(request, 200, RELEASE_INDEX),
           ),
         ),
       );

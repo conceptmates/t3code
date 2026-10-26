@@ -174,6 +174,8 @@ const make = Effect.gen(function* () {
       .execute(
         HttpClientRequest.get(cliReleaseIndexPageUrl(1)).pipe(
           HttpClientRequest.setHeader("Accept", "application/vnd.github+json"),
+          // GitHub's API answers 403 without a User-Agent, and undici sends none.
+          HttpClientRequest.setHeader("User-Agent", "t3code-desktop"),
         ),
       )
       .pipe(
