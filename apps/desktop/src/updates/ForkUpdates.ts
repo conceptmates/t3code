@@ -367,19 +367,37 @@ const make = Effect.gen(function* () {
   });
 
   const updater = ElectronUpdater.ElectronUpdater.of({
-    setFeedURL: () => Effect.void,
-    setAutoDownload: () => Effect.void,
-    setAutoInstallOnAppQuit: () => Effect.void,
-    setChannel: () => Effect.void,
-    setAllowPrerelease: () => Effect.void,
+    setFeedURL: Effect.fn("ForkUpdates.setFeedURL")(function () {
+      return Effect.void;
+    }),
+    setAutoDownload: Effect.fn("ForkUpdates.setAutoDownload")(function () {
+      return Effect.void;
+    }),
+    setAutoInstallOnAppQuit: Effect.fn("ForkUpdates.setAutoInstallOnAppQuit")(function () {
+      return Effect.void;
+    }),
+    setChannel: Effect.fn("ForkUpdates.setChannel")(function () {
+      return Effect.void;
+    }),
+    setAllowPrerelease: Effect.fn("ForkUpdates.setAllowPrerelease")(function () {
+      return Effect.void;
+    }),
     allowDowngrade: Effect.succeed(false),
-    setAllowDowngrade: () => Effect.void,
-    setFullChangelog: () => Effect.void,
-    setDisableDifferentialDownload: () => Effect.void,
+    setAllowDowngrade: Effect.fn("ForkUpdates.setAllowDowngrade")(function () {
+      return Effect.void;
+    }),
+    setFullChangelog: Effect.fn("ForkUpdates.setFullChangelog")(function () {
+      return Effect.void;
+    }),
+    setDisableDifferentialDownload: Effect.fn("ForkUpdates.setDisableDifferentialDownload")(
+      function () {
+        return Effect.void;
+      },
+    ),
     checkForUpdates,
     downloadUpdate,
     quitAndInstall,
-    on: (eventName, listener) => {
+    on: Effect.fn("ForkUpdates.on")(function (eventName, listener) {
       const untyped = listener as unknown as (...args: Array<unknown>) => void;
       return Effect.acquireRelease(
         Effect.sync(() => {
@@ -390,7 +408,7 @@ const make = Effect.gen(function* () {
             emitter.removeListener(eventName, untyped);
           }),
       ).pipe(Effect.asVoid);
-    },
+    }),
   });
 
   yield* logInfo("fork updates enabled", { sourceDir, minIntervalDays });

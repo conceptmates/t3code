@@ -31,7 +31,8 @@ import {
   deriveProviderInstanceEntries,
   sortProviderInstanceEntries,
 } from "../../providerInstances";
-import { useActiveEnvironmentId, useThreadShells } from "../../state/entities";
+import { useThreadShells } from "../../state/entities";
+import { usePrimaryEnvironmentId } from "../../state/environments";
 import { environmentServerConfigsAtom, primaryServerProvidersAtom } from "../../state/server";
 import { buildThreadRouteParams } from "../../threadRoutes";
 import { useTouchBarThreadStore } from "../../touchBarThreadStore";
@@ -52,11 +53,9 @@ const ALL_PROJECTS_KEY = "all";
  */
 export function DesktopTouchBarCoordinator() {
   const enabled = usePrimarySettings((settings) => settings.touchBarEnabled);
-  // Providers come from the environment the user is actually working in, not
-  // just the primary one. Reading only the primary is why a quota that had
-  // visibly changed in the app could leave the strip showing a stale number:
-  // the two were reading different environments.
-  const activeEnvironmentId = useActiveEnvironmentId();
+  // Providers come from the environment's live server config, not the separate
+  // primary providers atom, which could leave the strip showing a stale quota.
+  const activeEnvironmentId = usePrimaryEnvironmentId();
   const serverConfigs = useAtomValue(environmentServerConfigsAtom);
   const activeConfig =
     activeEnvironmentId === null ? undefined : serverConfigs.get(activeEnvironmentId);

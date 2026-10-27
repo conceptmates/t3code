@@ -249,8 +249,8 @@ export const make = Effect.gen(function* () {
   };
 
   return ElectronTouchBar.of({
-    registerIcons: (icons) =>
-      Effect.try({
+    registerIcons: Effect.fn("ElectronTouchBar.registerIcons")(function (icons) {
+      return Effect.try({
         try: (): ElectronTouchBarIconReport => {
           const registered: string[] = [];
           const rejected: string[] = [];
@@ -278,9 +278,10 @@ export const make = Effect.gen(function* () {
             itemCount: icons.length,
             cause,
           }),
-      }).pipe(Effect.orDie),
-    attach: (window, items, escapeItem) =>
-      Effect.try({
+      }).pipe(Effect.orDie);
+    }),
+    attach: Effect.fn("ElectronTouchBar.attach")(function (window, items, escapeItem) {
+      return Effect.try({
         try: () => {
           itemsByKey.clear();
           if (items === null) {
@@ -304,9 +305,10 @@ export const make = Effect.gen(function* () {
             itemCount: items?.length ?? 0,
             cause,
           }),
-      }).pipe(Effect.orDie),
-    update: (updates) =>
-      updates.length === 0
+      }).pipe(Effect.orDie);
+    }),
+    update: Effect.fn("ElectronTouchBar.update")(function (updates) {
+      return updates.length === 0
         ? Effect.void
         : Effect.try({
             try: () => {
@@ -334,7 +336,8 @@ export const make = Effect.gen(function* () {
                 itemCount: updates.length,
                 cause,
               }),
-          }).pipe(Effect.orDie),
+          }).pipe(Effect.orDie);
+    }),
   });
 });
 
