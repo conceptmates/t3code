@@ -61,6 +61,12 @@ main() {
   commit_lockfile
   typecheck 45 || fail "typecheck fails after the merge"
 
+  # T3 Connect's public Clerk/relay config comes from the gitignored .env; without it the build hides sign-in.
+  local main_env
+  main_env="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/.env"
+  [ -e .env ] || { [ -f "$main_env" ] && ln -s "$main_env" .env; }
+  grep -q '^T3CODE_CLERK_PUBLISHABLE_KEY=.' .env 2>/dev/null || fail "no .env with T3CODE_CLERK_PUBLISHABLE_KEY; T3 Connect would be disabled"
+
   progress 60 "Building the desktop app"
   rm -f "$out_dir"/T3-Code-*
   node scripts/build-desktop-artifact.ts --platform mac --target zip --arch "$arch" \
