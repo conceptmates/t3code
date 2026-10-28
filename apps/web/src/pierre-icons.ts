@@ -10,6 +10,8 @@ import {
   MATERIAL_ICON_SPRITE,
 } from "./materialIcons.generated";
 
+import type { ContextChipAccentKind } from "~/lib/contextChipAccents";
+
 export interface PierreIconResolution {
   /** A `<symbol>` id in the sprite, usable as `<use href="#name">`. */
   name: string;
@@ -17,12 +19,12 @@ export interface PierreIconResolution {
 
 const PIERRE_ICON_SPRITE_ID = "t3code-pierre-file-icon-sprite";
 
-const DOCUMENT_ICON_COLORS: Readonly<Record<string, string>> = {
-  "mi-pdf": "light-dark(#d52c36, #ff6762)",
-  "mi-word": "light-dark(#1a85d4, #69b1ff)",
-  "mi-table": "light-dark(#199f43, #5ecc71)",
-  "mi-powerpoint": "light-dark(#d47628, #ffa359)",
-  "mi-epub": "light-dark(#693acf, #9d6afb)",
+const DOCUMENT_CHIP_KINDS: Readonly<Record<string, ContextChipAccentKind>> = {
+  "mi-pdf": "doc-pdf",
+  "mi-word": "doc-word",
+  "mi-table": "doc-spreadsheet",
+  "mi-powerpoint": "doc-slides",
+  "mi-epub": "doc-epub",
 };
 
 /** Our own tree glyphs, appended to the generated Material sheet. */
@@ -169,8 +171,8 @@ export function resolvePierreIconForEntry(
   return { name: symbol ?? MATERIAL_DEFAULT_FILE_ICON };
 }
 
-export function documentIconColorForFileName(fileName: string) {
-  return DOCUMENT_ICON_COLORS[resolvePierreIconForEntry(fileName, "file").name];
+export function documentChipKindForFileName(fileName: string) {
+  return DOCUMENT_CHIP_KINDS[resolvePierreIconForEntry(fileName, "file").name];
 }
 
 /** False when a name only reaches the generic file glyph, so callers can hide it. */

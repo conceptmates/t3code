@@ -27,12 +27,14 @@ interface PendingRpcAckRequest {
 
 const pendingRpcAckRequests = new Map<string, PendingRpcAckRequest>();
 // Background reports nobody waits on. A busy host delays them first, and warning
-// about a request the user never made does not say what is wrong.
+// about a request the user never made does not say what is wrong. A sign-in wait
+// lasts as long as the user takes on the forge.
 const untrackedRpcAckMethods = new Set<string>([
   WS_METHODS.serverGetUsageSummary,
   WS_METHODS.serverReportClientActivity,
   // Waits for a phone to scan a pairing QR code, however long that takes.
   WS_METHODS.deviceAdbPair,
+  WS_METHODS.sourceControlSignInWait,
 ]);
 const longRunningRpcAckMethods = new Set<string>([
   WS_METHODS.serverUpdateProvider,

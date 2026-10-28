@@ -1,5 +1,5 @@
 import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environment";
-import { getThreadSortTimestamp, sortThreads } from "../../lib/threadSort";
+import { getThreadSortTimestamp, sortThreads } from "@t3tools/client-runtime/state/thread-sort";
 import { useAtomValue } from "@effect/atom-react";
 import { useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -26,11 +26,7 @@ import {
   type TouchBarChoiceInput,
   type TouchBarProviderInput,
 } from "../../lib/touchBarStrip";
-import {
-  applyProviderInstanceSettings,
-  deriveProviderInstanceEntries,
-  sortProviderInstanceEntries,
-} from "../../providerInstances";
+import { providerInstanceEntriesFor } from "../../providerInstances";
 import { useThreadShells } from "../../state/entities";
 import { usePrimaryEnvironmentId } from "../../state/environments";
 import { environmentServerConfigsAtom, primaryServerProvidersAtom } from "../../state/server";
@@ -66,8 +62,10 @@ export function DesktopTouchBarCoordinator() {
   const projectGroups = useProjectGroups();
   const threads = useThreadShells();
   const threadSortOrder = useClientSettings((value) => value.sidebarThreadSortOrder);
-  const projectScopeKey = useUiStateStore((store) => store.sidebarProjectScopeKey);
-  const setProjectScopeKey = useUiStateStore((store) => store.setSidebarProjectScopeKey);
+  const projectScopeKey = useUiStateStore((store) =>
+    store.sidebarProjectScopeKeys.length === 1 ? (store.sidebarProjectScopeKeys[0] ?? null) : null,
+  );
+  const setProjectScopeKeys = useUiStateStore((store) => store.setSidebarProjectScopeKeys);
   const thread = useTouchBarThreadStore();
   // Read through context, not a store: SidebarProvider keeps this in React
   // state, which is why this component is mounted inside it.
@@ -85,13 +83,7 @@ export function DesktopTouchBarCoordinator() {
 
   const providers = useMemo<readonly TouchBarProviderInput[]>(
     () =>
-      sortProviderInstanceEntries(
-        applyProviderInstanceSettings(
-          deriveProviderInstanceEntries(providerSnapshots),
-          settings,
-          null,
-        ),
-      )
+      providerInstanceEntriesFor(providerSnapshots, settings, null)
         .filter(
           (entry) => entry.enabled && entry.isAvailable && entry.snapshot.usageLimits !== undefined,
         )
@@ -229,7 +221,7 @@ export function DesktopTouchBarCoordinator() {
       // The filter button is gone from the strip; the handler stays because
       // the contract still carries the action for older desktop shells.
       onFilterProject: (key: string) => {
-        setProjectScopeKey(key === ALL_PROJECTS_KEY ? null : key);
+        setProjectScopeKeys(key === ALL_PROJECTS_KEY ? [] : [key]);
       },
       onToggleRightPanel: () => thread.onToggleRightPanel?.(),
       onToggleTerminal: () => thread.onToggleTerminal?.(),
@@ -244,7 +236,7 @@ export function DesktopTouchBarCoordinator() {
       },
       onRunToggle: () => thread.onRunToggle?.(),
     }),
-    [newThreadContext, onOpenProject, setProjectScopeKey, thread],
+    [newThreadContext, onOpenProject, setProjectScopeKeys, thread],
   );
 
   /** Provider chips and their popover rows, redrawn when quota or countdown moves. */

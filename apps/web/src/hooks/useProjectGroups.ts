@@ -4,7 +4,10 @@ import {
   orderItemsByPreferredIds,
   sortLogicalProjectsForSidebar,
 } from "../components/Sidebar.logic";
-import { getProjectOrderKey, selectProjectGroupingSettings } from "../logicalProject";
+import {
+  getProjectOrderKey,
+  selectProjectGroupingSettings,
+} from "@t3tools/client-runtime/state/project-grouping";
 import {
   buildSidebarProjectSnapshots,
   type SidebarProjectSnapshot,

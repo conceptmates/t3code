@@ -2,7 +2,7 @@ import { assert, describe, it } from "vite-plus/test";
 
 import { MATERIAL_ICON_SPRITE } from "./materialIcons.generated";
 import {
-  documentIconColorForFileName,
+  documentChipKindForFileName,
   hasSpecificPierreIconForFileName,
   resolvePierreIconForEntry,
   syntheticFileNameForLanguageId,
@@ -67,9 +67,9 @@ describe("file icon resolution", () => {
   ])("gives %s documents their family icon and accent color", (extension, icon) => {
     for (const path of [`report.${extension}`, `folder/REPORT.${extension.toUpperCase()}`]) {
       assert.equal(resolvePierreIconForEntry(path, "file").name, icon);
-      assert.isString(documentIconColorForFileName(path));
+      assert.isString(documentChipKindForFileName(path));
     }
-    assert.isUndefined(documentIconColorForFileName("src/index.ts"));
+    assert.isUndefined(documentChipKindForFileName("src/index.ts"));
   });
 
   it("uses the generic file glyph for unknown types", () => {
