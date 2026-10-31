@@ -113,6 +113,22 @@ describe("file icon resolution", () => {
   ])("gives a %s fence a language icon", (language) => {
     assert.isTrue(hasSpecificPierreIconForFileName(syntheticFileNameForLanguageId(language)));
   });
+
+  it.each([
+    ["luau", "mi-luau"],
+    ["xsd", "mi-xml"],
+    ["xsl", "mi-xml"],
+    ["xslt", "mi-xml"],
+  ])("gives %s files and fences the %s icon", (dialect, icon) => {
+    for (const path of [`src/init.${dialect}`, `src/INIT.${dialect.toUpperCase()}`]) {
+      assert.equal(resolvePierreIconForEntry(path, "file").name, icon);
+      assert.isTrue(hasSpecificPierreIconForFileName(path));
+    }
+    assert.equal(
+      resolvePierreIconForEntry(syntheticFileNameForLanguageId(dialect), "file").name,
+      icon,
+    );
+  });
 });
 
 describe("generated Material sprite", () => {
