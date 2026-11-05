@@ -1,3 +1,4 @@
+import type { ContextWindowSnapshot } from "@t3tools/client-runtime/state/context-window";
 import type {
   ServerProvider,
   ServerProviderUsageLimits,
@@ -6,7 +7,6 @@ import type {
 import { formatDuration, formatResetsIn } from "@t3tools/shared/usageLimits";
 import { memo, useEffect, useState } from "react";
 
-import type { ContextWindowSnapshot } from "../../lib/contextWindow";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
 import { barColor } from "../usage/UsageLimits";

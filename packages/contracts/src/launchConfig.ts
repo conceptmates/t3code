@@ -168,7 +168,7 @@ export const LaunchStartersResult = Schema.Struct({
 export type LaunchStartersResult = typeof LaunchStartersResult.Type;
 
 export class LaunchRunError extends Schema.TaggedError<LaunchRunError>()("LaunchRunError", {
-  name: Schema.String,
+  configName: Schema.String,
   message: Schema.String,
   cause: Schema.optional(Schema.Defect()),
 }) {}

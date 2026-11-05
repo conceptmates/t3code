@@ -101,7 +101,7 @@ typecheck() {
   for dir in "${TYPECHECK_DIRS[@]}"; do
     progress "$percent" "Typechecking $dir"
     percent=$((percent + 1))
-    (cd "$dir" && tsc --noEmit -p .) || failed=1
+    (cd "$dir" && effect-tsgo tsrs --noEmit -p .) || failed=1
   done
   return "$failed"
 }

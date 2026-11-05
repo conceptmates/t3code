@@ -106,7 +106,7 @@ export const make = Effect.gen(function* () {
   ): Effect.fn.Return<LaunchRunResult, LaunchRunError> {
     const fail = (message: string, cause?: unknown) =>
       new LaunchRunError({
-        name: input.name,
+        configName: input.name,
         message,
         ...(cause === undefined ? {} : { cause }),
       });

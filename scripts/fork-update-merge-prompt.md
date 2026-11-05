@@ -19,12 +19,12 @@ Rules:
   port the fork change to the new location instead of dropping it. When upstream deleted
   low-signal tests, accept the deletion.
 - `pnpm-lock.yaml`: take upstream's version, then run `vp i` and keep its result.
-- Use `vp`, `node`, and `tsc` from `node_modules/.bin` (already on PATH).
+- Use `vp`, `node`, and `effect-tsgo` from `node_modules/.bin` (already on PATH).
 
 Done means all of these hold:
 
 1. No unmerged paths and no `<<<<<<< HEAD` / `>>>>>>> upstream/main` markers left.
-2. `tsc --noEmit -p .` exits 0 in each of: apps/web, apps/desktop, apps/server, apps/mobile,
+2. `effect-tsgo tsrs --noEmit -p .` exits 0 in each of: apps/web, apps/desktop, apps/server, apps/mobile,
    packages/shared, packages/client-runtime, packages/contracts, packages/ssh.
 3. `vp test run <file>` passes for test files beside the files you changed.
 4. Everything is committed. If the merge is still in progress, commit it with this message:
