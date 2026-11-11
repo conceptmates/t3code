@@ -53,7 +53,7 @@ import { withWorkspaceLease } from "../workspace/workspaceLease.ts";
 export class GitWorkflowService extends Context.Service<
   GitWorkflowService,
   {
-    readonly isRepository: (cwd: string) => Effect.Effect<boolean, GitManagerServiceError>;
+    readonly repositoryRoot: (cwd: string) => Effect.Effect<string | null, GitManagerServiceError>;
     readonly hasCommit: (input: {
       readonly cwd: string;
       readonly refName: string;
@@ -349,13 +349,13 @@ export const make = Effect.gen(function* () {
   });
 
   return GitWorkflowService.of({
-    isRepository: Effect.fn("GitWorkflowService.isRepository")(function (cwd) {
+    repositoryRoot: Effect.fn("GitWorkflowService.repositoryRoot")(function (cwd) {
       return registry.detect({ cwd }).pipe(
-        Effect.map((handle) => handle?.kind === "git"),
+        Effect.map((handle) => (handle?.kind === "git" ? handle.repository.rootPath : null)),
         Effect.mapError(
           (cause) =>
             new GitManagerError({
-              operation: "GitWorkflowService.isRepository",
+              operation: "GitWorkflowService.repositoryRoot",
               cwd,
               detail: "Failed to detect a VCS repository for this Git workflow.",
               cause,
