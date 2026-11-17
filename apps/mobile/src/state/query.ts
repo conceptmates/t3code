@@ -16,6 +16,9 @@ export interface EnvironmentQueryView<A> {
   readonly refresh: () => void;
 }
 
+/** What a request cut off by a dropped connection says; it carries no error of its own. */
+export const ENVIRONMENT_REQUEST_INTERRUPTED = "The connection dropped before this finished.";
+
 /** `Cause.pretty` renders an empty defect as "Unknown error", which tells the reader nothing. */
 const UNINFORMATIVE_CAUSE = /^(error:\s*)?unknown error:?$/i;
 
@@ -24,7 +27,8 @@ function describeOpaqueCause(cause: Cause.Cause<unknown>): string | null {
   return detail && !UNINFORMATIVE_CAUSE.test(detail) ? detail : null;
 }
 
-function formatError(cause: Cause.Cause<unknown>): string {
+export function formatEnvironmentQueryError(cause: Cause.Cause<unknown>): string {
+  if (Cause.hasInterruptsOnly(cause)) return ENVIRONMENT_REQUEST_INTERRUPTED;
   const error = Cause.squash(cause);
   if (error instanceof Error && error.message.trim().length > 0) return error.message;
   // Every declared environment error carries a message, so landing here means the
@@ -46,7 +50,7 @@ export function useEnvironmentQuery<A, E>(
     // Data may be structurally shared; only a settled success proves a new response.
     successResult: result._tag === "Success" && !result.waiting ? result : null,
     failure: result._tag === "Failure" ? Cause.squash(result.cause) : null,
-    error: result._tag === "Failure" ? formatError(result.cause) : null,
+    error: result._tag === "Failure" ? formatEnvironmentQueryError(result.cause) : null,
     isPending: atom !== null && result.waiting,
     isSuccess: result._tag === "Success",
     refresh,

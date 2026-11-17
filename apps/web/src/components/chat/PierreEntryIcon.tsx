@@ -7,12 +7,9 @@ import { cn } from "~/lib/utils";
 ensurePierreIconSprite();
 
 /**
- * The file and folder glyph for our own chrome — breadcrumbs, pickers, chips,
- * changed-file lists. Tree rows get the same sprite through `@pierre/trees`.
- *
- * Material Icon Theme bakes color into the artwork, so there is nothing to tint
- * and no light/dark variant to pick: the outer `<svg>` carries no viewBox and
- * each `<symbol>` scales its own coordinate system to whatever size CSS gives.
+ * Material artwork bakes in its color, so there is nothing to tint per theme.
+ * Each `<symbol>` scales its own viewBox into the outer square, which keeps the
+ * icon square even before CSS sizes it.
  */
 export const PierreEntryIcon = memo(function PierreEntryIcon(props: {
   pathValue: string;
@@ -29,6 +26,7 @@ export const PierreEntryIcon = memo(function PierreEntryIcon(props: {
       aria-hidden="true"
       data-pierre-icon={icon.name}
       className={cn("size-4 shrink-0", props.className)}
+      viewBox="0 0 16 16"
     >
       <use href={`#${icon.name}`} />
     </svg>

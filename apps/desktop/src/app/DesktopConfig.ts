@@ -42,7 +42,6 @@ export const DesktopConfig = Config.all({
   appUserModelIdOverride: trimmedString("T3CODE_DESKTOP_APP_USER_MODEL_ID"),
   devRemoteT3ServerEntryPath: trimmedString("T3CODE_DEV_REMOTE_T3_SERVER_ENTRY_PATH"),
   sshRemoteVersion: trimmedString("T3CODE_SSH_REMOTE_VERSION"),
-  releaseBaseUrl: trimmedString("T3CODE_RELEASE_BASE_URL"),
   configuredBackendPort: Config.Port("T3CODE_PORT").pipe(Config.option),
   commitHashOverride: trimmedString("T3CODE_COMMIT_HASH"),
   desktopLanHostOverride: trimmedString("T3CODE_DESKTOP_LAN_HOST"),

@@ -22,8 +22,7 @@ import * as Electron from "electron";
 
 import * as NetService from "@t3tools/shared/Net";
 import * as HostProcess from "@t3tools/shared/HostProcess";
-import type { RemoteT3RunnerOptions } from "@t3tools/ssh/tunnel";
-import serverPackageJson from "../../server/package.json" with { type: "json" };
+import { CLI_RELEASE_BASE_URL_ENV } from "@t3tools/shared/cliRelease";
 
 import * as DesktopIpc from "./ipc/DesktopIpc.ts";
 import * as ElectronApp from "./electron/ElectronApp.ts";
@@ -113,48 +112,34 @@ const layerDesktopEnvironment = Layer.unwrap(
   }),
 );
 
-const resolveDesktopSshCliRunner = (
-  environment: DesktopEnvironment.DesktopEnvironment["Service"],
-  settings: DesktopAppSettings.DesktopAppSettings["Service"],
-  resolveVersionAutomatically: Effect.Effect<string>,
-): Effect.Effect<RemoteT3RunnerOptions> =>
-  Effect.gen(function* () {
-    const devRemoteEntryPath = Option.getOrUndefined(environment.devRemoteT3ServerEntryPath);
-    if (environment.isDevelopment && devRemoteEntryPath !== undefined) {
-      return {
-        nodeScriptPath: devRemoteEntryPath,
-        nodeEngineRange: serverPackageJson.engines.node,
-      };
-    }
-    // The launch environment outranks the setting, which outranks whatever the
-    // app can find published.
-    const configuredVersion =
-      Option.getOrUndefined(environment.sshRemoteVersion) ?? (yield* settings.get).sshRemoteVersion;
-    return {
-      archiveVersion: configuredVersion ?? (yield* resolveVersionAutomatically),
-      releaseBaseUrl: Option.getOrNull(environment.releaseBaseUrl),
-    };
-  });
-
 const layerDesktopSshEnvironment = Layer.unwrap(
   Effect.gen(function* () {
     const environment = yield* DesktopEnvironment.DesktopEnvironment;
     const settings = yield* DesktopAppSettings.DesktopAppSettings;
+    const env = yield* HostProcess.Environment;
     // The lookup is a network round trip, so it runs on the first SSH launch
-    // rather than at startup, and once per app run. The setting is read per
-    // launch, so changing it takes effect without a restart.
+    // rather than at startup, and once per app run.
     const resolveVersionAutomatically = yield* Effect.cached(
-      DesktopSshRunnerVersion.resolveRemoteArchiveVersion({
-        appVersion: environment.appVersion,
-        releaseBaseUrl: Option.getOrNull(environment.releaseBaseUrl),
-      }).pipe(Effect.provide(NodeHttpClient.layerUndici)),
+      Effect.suspend(() =>
+        DesktopSshRunnerVersion.resolveRemoteArchiveVersion({
+          appVersion: environment.appVersion,
+          releaseBaseUrl: env[CLI_RELEASE_BASE_URL_ENV] ?? null,
+        }),
+      ).pipe(Effect.provide(NodeHttpClient.layerUndici)),
     );
     return DesktopSshEnvironment.layer({
-      resolveCliRunner: resolveDesktopSshCliRunner(
-        environment,
-        settings,
-        resolveVersionAutomatically,
-      ),
+      // Per connect: the login shell's environment is installed after this layer is built.
+      resolveCliRunner: Effect.gen(function* () {
+        const runner = DesktopSshEnvironment.resolveDesktopSshCliRunner(environment, env);
+        if (runner.archiveVersion == null) return runner;
+        // The launch environment outranks the setting, which outranks whatever
+        // the app can find published. The setting is read per launch.
+        const archiveVersion =
+          Option.getOrUndefined(environment.sshRemoteVersion) ??
+          (yield* settings.get).sshRemoteVersion ??
+          (yield* resolveVersionAutomatically);
+        return { ...runner, archiveVersion };
+      }),
       resolveLauncherId: yield* Effect.cached(
         DesktopSshEnvironment.readOrCreateLauncherId(
           environment.path.join(environment.stateDir, "ssh-launcher-id"),
