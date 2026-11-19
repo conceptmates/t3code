@@ -1,8 +1,12 @@
+import { errorDisplayMessage } from "@t3tools/client-runtime/errors";
 import { RegistryContext, useAtomRefresh, useAtomValue } from "@effect/atom-react";
 import * as Cause from "effect/Cause";
 import * as Option from "effect/Option";
 import { AsyncResult, Atom } from "effect/reactivity";
+import { msg } from "gt-react";
 import { useContext } from "react";
+
+import { m, type MessageResolver } from "../i18n/messages";
 
 const EMPTY_ASYNC_RESULT_ATOM = Atom.make(AsyncResult.initial<never, never>(false)).pipe(
   Atom.withLabel("web-environment-query:empty"),
@@ -26,15 +30,18 @@ function describeOpaqueCause(cause: Cause.Cause<unknown>): string | null {
   return detail && !UNINFORMATIVE_CAUSE.test(detail) ? detail : null;
 }
 
-export function formatEnvironmentQueryError(cause: Cause.Cause<unknown>): string {
+export function formatEnvironmentQueryError(
+  cause: Cause.Cause<unknown>,
+  resolve: MessageResolver = m,
+): string {
   const error = Cause.squash(cause);
-  if (error instanceof Error && error.message.trim().length > 0) return error.message;
-  // Every declared environment error carries a message, so landing here means the
-  // failure came from outside the RPC's error channel — a transport or decode
-  // fault, most often an environment too old to know the method. Name it, rather
-  // than leaving the reader with a string they cannot act on.
+  const message = error instanceof Error ? errorDisplayMessage(error, resolve) : null;
+  if (message !== null) return message;
+  // Every declared environment error carries a message, so landing here means a transport or
+  // decode fault, most often an environment too old to know the method. Name it.
+  const fallback = resolve(msg("The environment request failed."));
   const detail = describeOpaqueCause(cause);
-  return detail ? `The environment request failed: ${detail}` : "The environment request failed.";
+  return detail ? `${fallback} (${detail})` : fallback;
 }
 
 function queryUpdatedAt(result: AsyncResult.AsyncResult<unknown, unknown>): number {
@@ -47,6 +54,7 @@ function queryUpdatedAt(result: AsyncResult.AsyncResult<unknown, unknown>): numb
 
 export function useEnvironmentQuery<A, E>(
   atom: Atom.Atom<AsyncResult.AsyncResult<A, E>> | null,
+  resolve: MessageResolver = m,
 ): EnvironmentQueryView<A, E> {
   const selectedAtom = atom ?? EMPTY_ASYNC_RESULT_ATOM;
   const result = useAtomValue(selectedAtom);
@@ -54,7 +62,7 @@ export function useEnvironmentQuery<A, E>(
   return {
     data: AsyncResult.getOrElse(result, () => null),
     dataUpdatedAt: queryUpdatedAt(result),
-    error: result._tag === "Failure" ? formatEnvironmentQueryError(result.cause) : null,
+    error: result._tag === "Failure" ? formatEnvironmentQueryError(result.cause, resolve) : null,
     failure:
       result._tag === "Failure" ? Option.getOrNull(Cause.findErrorOption(result.cause)) : null,
     isPending: atom !== null && result.waiting,

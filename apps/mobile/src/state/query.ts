@@ -1,6 +1,9 @@
 import { useAtomRefresh, useAtomValue } from "@effect/atom-react";
 import * as Cause from "effect/Cause";
 import { AsyncResult, Atom } from "effect/reactivity";
+import { msg, useMessages } from "gt-react-native";
+
+import { m, type MessageResolver } from "../i18n/messages";
 
 const EMPTY_ASYNC_RESULT_ATOM = Atom.make(AsyncResult.initial<never, never>(false)).pipe(
   Atom.withLabel("mobile-environment-query:empty"),
@@ -17,7 +20,7 @@ export interface EnvironmentQueryView<A> {
 }
 
 /** What a request cut off by a dropped connection says; it carries no error of its own. */
-export const ENVIRONMENT_REQUEST_INTERRUPTED = "The connection dropped before this finished.";
+export const ENVIRONMENT_REQUEST_INTERRUPTED = msg("The connection dropped before this finished.");
 
 /** `Cause.pretty` renders an empty defect as "Unknown error", which tells the reader nothing. */
 const UNINFORMATIVE_CAUSE = /^(error:\s*)?unknown error:?$/i;
@@ -27,16 +30,18 @@ function describeOpaqueCause(cause: Cause.Cause<unknown>): string | null {
   return detail && !UNINFORMATIVE_CAUSE.test(detail) ? detail : null;
 }
 
-export function formatEnvironmentQueryError(cause: Cause.Cause<unknown>): string {
-  if (Cause.hasInterruptsOnly(cause)) return ENVIRONMENT_REQUEST_INTERRUPTED;
+export function formatEnvironmentQueryError(
+  cause: Cause.Cause<unknown>,
+  resolve: MessageResolver = m,
+): string {
+  if (Cause.hasInterruptsOnly(cause)) return resolve(ENVIRONMENT_REQUEST_INTERRUPTED);
   const error = Cause.squash(cause);
   if (error instanceof Error && error.message.trim().length > 0) return error.message;
-  // Every declared environment error carries a message, so landing here means the
-  // failure came from outside the RPC's error channel — a transport or decode
-  // fault, most often an environment too old to know the method. Name it, rather
-  // than leaving the reader with a string they cannot act on.
+  // Every declared environment error carries a message, so landing here means a transport or
+  // decode fault, most often an environment too old to know the method. Name it.
+  const fallback = resolve(msg("The environment request failed."));
   const detail = describeOpaqueCause(cause);
-  return detail ? `The environment request failed: ${detail}` : "The environment request failed.";
+  return detail ? `${fallback} (${detail})` : fallback;
 }
 
 export function useEnvironmentQuery<A, E>(
@@ -45,12 +50,13 @@ export function useEnvironmentQuery<A, E>(
   const selectedAtom = atom ?? EMPTY_ASYNC_RESULT_ATOM;
   const result = useAtomValue(selectedAtom);
   const refresh = useAtomRefresh(selectedAtom);
+  const resolve = useMessages();
   return {
     data: AsyncResult.getOrElse(result, () => null),
     // Data may be structurally shared; only a settled success proves a new response.
     successResult: result._tag === "Success" && !result.waiting ? result : null,
     failure: result._tag === "Failure" ? Cause.squash(result.cause) : null,
-    error: result._tag === "Failure" ? formatEnvironmentQueryError(result.cause) : null,
+    error: result._tag === "Failure" ? formatEnvironmentQueryError(result.cause, resolve) : null,
     isPending: atom !== null && result.waiting,
     isSuccess: result._tag === "Success",
     refresh,

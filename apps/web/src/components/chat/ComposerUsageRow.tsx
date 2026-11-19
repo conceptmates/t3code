@@ -4,7 +4,7 @@ import type {
   ServerProviderUsageLimits,
   ServerProviderUsageWindow,
 } from "@t3tools/contracts";
-import { formatDuration, formatResetsIn } from "@t3tools/shared/usageLimits";
+import { formatDuration, formatResetsIn } from "@t3tools/shared/usageLimitsCopy";
 import { memo, useEffect, useState } from "react";
 
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
