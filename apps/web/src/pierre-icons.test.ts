@@ -72,6 +72,16 @@ describe("file icon resolution", () => {
     assert.isUndefined(documentChipKindForFileName("src/index.ts"));
   });
 
+  it.each([
+    ["src/app.test.ts", "mi-test-ts"],
+    ["src/App.spec.tsx", "mi-test-jsx"],
+    ["src/app.test.js", "mi-test-js"],
+    ["vitest.config.ts", "mi-vitest"],
+    [".oxfmtrc.json", "mi-oxc"],
+  ])("gives %s its Material tooling icon", (path, iconName) => {
+    assert.equal(resolvePierreIconForEntry(path, "file").name, iconName);
+  });
+
   it("uses the generic file glyph for unknown types", () => {
     assert.equal(resolvePierreIconForEntry("artifact.unknown-ext", "file").name, "mi-file");
     assert.isFalse(hasSpecificPierreIconForFileName("artifact.unknown-ext"));

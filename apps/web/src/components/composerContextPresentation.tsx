@@ -52,7 +52,6 @@ import {
   type ContextPresentationCapability,
 } from "./contextPresentationRegistry";
 import type { ContextChipKind } from "./ContextChip";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 import {
   ContextChipPopover,
   ContextChipShell,
@@ -62,6 +61,7 @@ import {
   PullRequestChip,
   UnresolvedChip,
 } from "./contextChipParts";
+import { SharedTooltipTrigger } from "./ui/shared-tooltip";
 
 export interface ComposerImageContextAttachment extends Omit<ComposerImageAttachment, "file"> {
   readonly file: File | null;
@@ -253,22 +253,19 @@ function ImageContextChip(props: {
   const messages = useMessages();
   const suffix = useUploadStatusSuffix(props.record.id, props.upload);
   return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <ImageChipButton
-            name={props.record.name}
-            previewUrl={props.record.previewUrl}
-            size={formatAttachmentSize(props.record.sizeBytes, messages)}
-            suffix={suffix}
-            onClick={() => actions.expandImage(props.record.id)}
-          />
-        }
-      />
-      <TooltipPopup side="top" className="whitespace-pre-wrap">
-        {attachmentTooltip(props.record, props.upload, messages)}
-      </TooltipPopup>
-    </Tooltip>
+    <SharedTooltipTrigger
+      render={
+        <ImageChipButton
+          name={props.record.name}
+          previewUrl={props.record.previewUrl}
+          size={formatAttachmentSize(props.record.sizeBytes, messages)}
+          suffix={suffix}
+          onClick={() => actions.expandImage(props.record.id)}
+        />
+      }
+      label={attachmentTooltip(props.record, props.upload, messages)}
+      className="whitespace-pre-wrap"
+    />
   );
 }
 

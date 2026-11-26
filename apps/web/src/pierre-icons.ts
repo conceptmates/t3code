@@ -59,7 +59,7 @@ const T3_ICON_BY_FILE_NAME: Record<string, string> = {
  * which is why nothing here tints by token.
  *
  * `byFolderName` and the `file-tree-icon-folder` slot come from our patch in
- * `patches/@pierre__trees@1.0.0-beta.4.patch`: upstream hardcodes a chevron for
+ * `patches/@pierre__trees@1.0.0.patch`: upstream hardcodes a chevron for
  * directory rows and never passes the row's path to the resolver, so folder art
  * has no way in. The patch splits the chevron and the entry glyph into two
  * lanes; re-apply it when the dependency moves.
